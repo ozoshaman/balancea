@@ -32,6 +32,7 @@ const Register = () => {
   const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Si el usuario queda autenticado (por ejemplo al completar registro), navegar al dashboard
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/dashboard');
@@ -111,8 +112,8 @@ const Register = () => {
       
       // Enviar código de verificación
       await sendEmailVerificationCode(formData.email);
-      
-      // Redirigir a página de verificación
+
+      // Redirigir a la página de verificación (no acceder al dashboard hasta verificar)
       navigate('/verify-email', { state: { email: formData.email } });
     } catch (err) {
       console.error('Error al registrar usuario:', err);

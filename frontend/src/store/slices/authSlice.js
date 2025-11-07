@@ -17,8 +17,13 @@ export const registerUser = createAsyncThunk(
   async (userData, { rejectWithValue }) => {
     try {
       const response = await authService.register(userData);
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      // Sólo persistir token/usuario si el backend devolvió token
+      if (response.data?.token) {
+        localStorage.setItem('token', response.data.token);
+      }
+      if (response.data?.user) {
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      }
       return response.data;
     } catch (error) {
       return rejectWithValue(error.message || 'Error al registrar usuario');
@@ -66,6 +71,16 @@ const authSlice = createSlice({
       state.isAuthenticated = false;
       state.error = null;
     },
+    // Establecer credenciales (usar después de verificar email para login automático)
+    setCredentials: (state, action) => {
+      const { user, token } = action.payload;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      state.user = user;
+      state.token = token;
+      state.isAuthenticated = true;
+      state.error = null;
+    },
     clearError: (state) => {
       state.error = null;
     },
@@ -80,8 +95,9 @@ const authSlice = createSlice({
       .addCase(registerUser.fulfilled, (state, action) => {
         state.isLoading = false;
         state.user = action.payload.user;
-        state.token = action.payload.token;
-        state.isAuthenticated = true;
+        state.token = action.payload.token || null;
+        // No marcar como autenticado si no hay token (registro que requiere verificación)
+        state.isAuthenticated = !!action.payload.token;
         state.error = null;
       })
       .addCase(registerUser.rejected, (state, action) => {
@@ -126,5 +142,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, setCredentials, clearError } = authSlice.actions;
 export default authSlice.reducer;
