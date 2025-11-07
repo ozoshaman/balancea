@@ -1,23 +1,19 @@
 // src/pages/Auth/Register.jsx
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { sendEmailVerificationCode } from '../../services/api/verificationService';
-import TermsModal from '../../components/common/TermsModal';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-  Grid,
-  Checkbox,
-  FormControlLabel,
-  Link as MuiLink,
-} from '@mui/material';
+import { Typography, Box, Grid, Alert } from '@mui/material';
+import { PersonAddOutlined } from '@mui/icons-material';
+
+// Componentes reutilizables
+import AuthContainer from '../../components/common/AuthContainer/AuthContainer.jsx';
+import AuthAvatar from '../../components/common/AuthAvatar/AuthAvatar.jsx';
+import Input from '../../components/common/Input/Input.jsx';
+import Button from '../../components/common/Button/Button.jsx';
+import AuthLink from '../../components/common/AuthLink/AuthLink.jsx';
+import TermsCheckbox from '../../components/common/TermsCheckbox/TermsCheckbox.jsx';
+import TermsModal from '../../components/common/TermsModal/TermsModal.jsx';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -125,162 +121,123 @@ const Register = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
+    <AuthContainer>
+      <AuthAvatar icon={PersonAddOutlined} />
+
+      <Typography
+        variant="h5"
+        align="center"
+        gutterBottom
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          py: 4,
+          color: '#300152',
+          fontWeight: 'bold',
+          mb: 3,
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" align="center" gutterBottom>
-            Balancea
-          </Typography>
-          <Typography variant="h6" align="center" color="text.secondary" gutterBottom>
-            Crear Cuenta
-          </Typography>
+        Crear Cuenta
+      </Typography>
 
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Nombre"
-                  name="firstName"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  error={!!formErrors.firstName}
-                  helperText={formErrors.firstName}
-                  autoFocus
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Apellido"
-                  name="lastName"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  error={!!formErrors.lastName}
-                  helperText={formErrors.lastName}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  fullWidth
-                  label="Email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  error={!!formErrors.email}
-                  helperText={formErrors.email}
-                  autoComplete="email"
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  fullWidth
-                  label="Contraseña"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  error={!!formErrors.password}
-                  helperText={formErrors.password}
-                  autoComplete="new-password"
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  fullWidth
-                  label="Confirmar Contraseña"
-                  name="confirmPassword"
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  error={!!formErrors.confirmPassword}
-                  helperText={formErrors.confirmPassword}
-                  autoComplete="new-password"
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12 }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name="acceptTerms"
-                      checked={formData.acceptTerms}
-                      onChange={handleChange}
-                      color="primary"
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      Acepto los{' '}
-                      <MuiLink
-                        component="button"
-                        variant="body2"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setTermsModalOpen(true);
-                        }}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        términos y condiciones
-                      </MuiLink>
-                    </Typography>
-                  }
-                />
-                {formErrors.acceptTerms && (
-                  <Typography variant="caption" color="error" display="block">
-                    {formErrors.acceptTerms}
-                  </Typography>
-                )}
-              </Grid>
-            </Grid>
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={isLoading || isSubmitting}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {isLoading || isSubmitting ? <CircularProgress size={24} /> : 'Registrarse'}
-            </Button>
-
-            <Box sx={{ textAlign: 'center', mt: 2 }}>
-              <Typography variant="body2">
-                ¿Ya tienes cuenta?{' '}
-                <Link
-                  to="/login"
-                  style={{ textDecoration: 'none', color: '#1976d2' }}
-                >
-                  Inicia sesión aquí
-                </Link>
-              </Typography>
+      <Box component="form" onSubmit={handleSubmit}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {/* Fila 1: Nombre y Apellido */}
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <Input
+                label="Nombre"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleChange}
+                error={!!formErrors.firstName}
+                helperText={formErrors.firstName}
+                autoFocus
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Input
+                label="Apellido"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleChange}
+                error={!!formErrors.lastName}
+                helperText={formErrors.lastName}
+              />
             </Box>
           </Box>
-        </Paper>
 
-        <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+          {/* Fila 2: Correo (ancho completo) */}
+          <Box sx={{ width: '100%' }}>
+            <Input
+              label="Correo"
+              name="email"
+              type="email"
+              value={formData.email}
+              onChange={handleChange}
+              error={!!formErrors.email}
+              helperText={formErrors.email}
+              autoComplete="email"
+            />
+          </Box>
+
+          {/* Fila 3: Contraseña y Confirmar Contraseña */}
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <Input
+                label="Contraseña"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                error={!!formErrors.password}
+                helperText={formErrors.password}
+                autoComplete="new-password"
+                showPasswordToggle
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Input
+                label="Confirmar Contraseña"
+                name="confirmPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                error={!!formErrors.confirmPassword}
+                helperText={formErrors.confirmPassword}
+                autoComplete="new-password"
+                showPasswordToggle
+              />
+            </Box>
+          </Box>
+
+          {/* Fila 4: Checkbox de términos */}
+          <Box sx={{ width: '100%' }}>
+            <TermsCheckbox
+              checked={formData.acceptTerms}
+              onChange={handleChange}
+              error={formErrors.acceptTerms}
+              onTermsClick={() => setTermsModalOpen(true)}
+            />
+          </Box>
+        </Box>
+
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Button type="submit" isLoading={isLoading || isSubmitting}>
+            Registrarse
+          </Button>
+        </Box>
+
+        <AuthLink to="/login" align="center">
+          ¿Ya tienes cuenta? Inicia sesión aquí
+        </AuthLink>
       </Box>
-    </Container>
+
+      <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+    </AuthContainer>
   );
 };
 

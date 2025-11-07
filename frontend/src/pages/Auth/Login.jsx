@@ -1,17 +1,15 @@
 // src/pages/Auth/Login.jsx
 import { useState, useEffect } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-} from '@mui/material';
+import { Typography, Box, Alert } from '@mui/material';
+
+// Componentes reutilizables
+import AuthContainer from '../../components/common/AuthContainer/AuthContainer.jsx';
+import AuthAvatar from '../../components/common/AuthAvatar/AuthAvatar.jsx';
+import Input from '../../components/common/Input/Input.jsx';
+import Button from '../../components/common/Button/Button.jsx';
+import AuthLink from '../../components/common/AuthLink/AuthLink.jsx';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -44,14 +42,13 @@ const Login = () => {
       ...prev,
       [name]: value,
     }));
-    // Limpiar error del campo al escribir
     if (formErrors[name]) {
       setFormErrors((prev) => ({
         ...prev,
         [name]: '',
       }));
     }
-  };
+  }; 
 
   const validateForm = () => {
     const errors = {};
@@ -84,100 +81,74 @@ const Login = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
+    <AuthContainer>
+      <AuthAvatar />
+
+      <Typography
+        variant="h5"
+        align="center"
+        gutterBottom
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          color: '#300152',
+          fontWeight: 'bold',
+          mb: 3,
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" align="center" gutterBottom>
-            Balancea
-          </Typography>
-          <Typography variant="h6" align="center" color="text.secondary" gutterBottom>
-            Iniciar Sesión
-          </Typography>
+        Bienvenido
+      </Typography>
 
-          {successMessage && (
-            <Alert severity="success" sx={{ mt: 2 }} onClose={() => setSuccessMessage('')}>
-              {successMessage}
-            </Alert>
-          )}
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage('')}>
+          {successMessage}
+        </Alert>
+      )}
 
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-            <TextField
-              fullWidth
-              label="Email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange}
-              error={!!formErrors.email}
-              helperText={formErrors.email}
-              margin="normal"
-              autoComplete="email"
-              autoFocus
-            />
+      <Box component="form" onSubmit={handleSubmit}>
+        <Input
+          label="Correo"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          error={!!formErrors.email}
+          helperText={formErrors.email}
+          autoComplete="email"
+          autoFocus
+        />
 
-            <TextField
-              fullWidth
-              label="Contraseña"
-              name="password"
-              type="password"
-              value={formData.password}
-              onChange={handleChange}
-              error={!!formErrors.password}
-              helperText={formErrors.password}
-              margin="normal"
-              autoComplete="current-password"
-            />
+        <Input
+          label="Contraseña"
+          name="password"
+          type="password"
+          value={formData.password}
+          onChange={handleChange}
+          error={!!formErrors.password}
+          helperText={formErrors.password}
+          autoComplete="current-password"
+          showPasswordToggle
+        />
 
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={isLoading}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {isLoading ? <CircularProgress size={24} /> : 'Iniciar Sesión'}
-            </Button>
+        <AuthLink to="/forgot-password" align="left">
+          ¿Olvidaste tu contraseña?
+        </AuthLink>
 
-            <Box sx={{ textAlign: 'center', mt: 2 }}>
-              <Link
-                to="/forgot-password"
-                style={{ textDecoration: 'none', color: '#1976d2' }}
-              >
-                <Typography variant="body2">
-                  ¿Olvidaste tu contraseña?
-                </Typography>
-              </Link>
-            </Box>
+        <Box sx={{ mt: 3, mb: 2 }}>
+          <Button type="submit" isLoading={isLoading}>
+            Ingresar
+          </Button>
+        </Box>
 
-            <Box sx={{ textAlign: 'center', mt: 2 }}>
-              <Typography variant="body2">
-                ¿No tienes cuenta?{' '}
-                <Link
-                  to="/register"
-                  style={{ textDecoration: 'none', color: '#1976d2' }}
-                >
-                  Regístrate aquí
-                </Link>
-              </Typography>
-            </Box>
-          </Box>
-        </Paper>
+        <AuthLink to="/register" align="center">
+          Crear Cuenta
+        </AuthLink>
       </Box>
-    </Container>
+    </AuthContainer>
   );
 };
 
