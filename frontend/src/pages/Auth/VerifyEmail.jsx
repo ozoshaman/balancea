@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { sendEmailVerificationCode, verifyEmailCode } from '../../services/api/verificationService';
+import { useDispatch } from 'react-redux';
+import { setCredentials } from '../../store/slices/authSlice';
 import {
   Container,
   Paper,
@@ -26,6 +28,7 @@ const VerifyEmail = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [canResend, setCanResend] = useState(true);
   const [countdown, setCountdown] = useState(0);
+  const dispatch = useDispatch();
 
   useEffect(() => {
     if (!email) {
@@ -73,16 +76,28 @@ const VerifyEmail = () => {
     setIsVerifying(true);
 
     try {
-      await verifyEmailCode(email, code);
-      
-      setSuccess('¡Email verificado! Redirigiendo...');
-      
-      // Esperar 1 segundo y redirigir al login
+      setSuccess('¡Email verificado! Iniciando sesión y redirigiendo...');
+
+      // verifyEmailCode en el backend ahora devuelve { user, token }
+      const response = await verifyEmailCode(email, code);
+      const { user, token } = response;
+      if (token && user) {
+        // Guardar en store y localStorage
+        dispatch(setCredentials({ user, token }));
+
+        // Redirigir al dashboard
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 500);
+        return;
+      }
+
+      // Fallback: redirigir al login si no hay token
       setTimeout(() => {
-        navigate('/login', { 
-          state: { 
-            message: 'Email verificado exitosamente. Por favor inicia sesión.' 
-          } 
+        navigate('/login', {
+          state: {
+            message: 'Email verificado exitosamente. Por favor inicia sesión.'
+          }
         });
       }, 1000);
     } catch (err) {

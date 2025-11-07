@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../utils/responseHandler.js';
 import { generateVerificationCode, getCodeExpirationDate } from '../utils/codeUtils.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/emailService.js';
 import { hashPassword } from '../utils/bcryptUtils.js';
+import { generateToken } from '../utils/jwtUtils.js';
 
 const prisma = new PrismaClient();
 
@@ -108,14 +109,27 @@ export const verifyEmailCode = async (req, res) => {
       data: { isVerified: true }
     });
 
+    // Generar token para iniciar sesión automáticamente tras la verificación
+    const expiresIn = user.role === 'PREMIUM'
+      ? process.env.JWT_EXPIRES_IN_PREMIUM || '30d'
+      : process.env.JWT_EXPIRES_IN_FREE || '7d';
+
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role
+    }, expiresIn);
+
     return successResponse(res, {
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        role: user.role,
         isVerified: user.isVerified
-      }
+      },
+      token
     }, 'Email verificado exitosamente', 200);
 
   } catch (error) {
