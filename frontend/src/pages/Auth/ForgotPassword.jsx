@@ -1,18 +1,15 @@
 // src/pages/Auth/ForgotPassword.jsx
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { forgotPassword } from '../../services/api/verificationService';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-} from '@mui/material';
+import { Typography, Box, Alert } from '@mui/material';
 import { LockReset as LockResetIcon } from '@mui/icons-material';
+
+// Componentes reutilizables
+import AuthContainer from '../../components/common/AuthContainer/AuthContainer.jsx';
+import Input from '../../components/common/Input/Input.jsx';
+import Button from '../../components/common/Button/Button.jsx';
+import AuthLink from '../../components/common/AuthLink/AuthLink.jsx';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
@@ -49,69 +46,83 @@ const ForgotPassword = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
+    <AuthContainer maxWidth="sm">
+      {/* Ícono de Candado */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        <Box
+          sx={{
+            width: 100,
+            height: 100,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            border: '3px solid #300152',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <LockResetIcon sx={{ fontSize: 56, color: '#300152' }} />
+        </Box>
+      </Box>
+
+      {/* Título */}
+      <Typography
+        variant="h5"
+        align="center"
+        gutterBottom
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          color: '#300152',
+          fontWeight: 'bold',
+          mb: 2,
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <LockResetIcon sx={{ fontSize: 64, color: 'secondary.main', mb: 2 }} />
-            <Typography variant="h4" component="h1" gutterBottom>
-              ¿Olvidaste tu contraseña?
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Ingresa tu email y te enviaremos un código de recuperación
-            </Typography>
-          </Box>
+        ¿Olvidaste tu contraseña?
+      </Typography>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+      {/* Descripción */}
+      <Typography 
+        variant="body2" 
+        align="center"
+        sx={{ 
+          color: '#300152',
+          mb: 3,
+        }}
+      >
+        Ingresa tu email y te enviaremos un código de recuperación
+      </Typography>
 
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              margin="normal"
-              autoFocus
-              autoComplete="email"
-            />
+      {/* Alerta de error */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={isLoading}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {isLoading ? <CircularProgress size={24} /> : 'Enviar código'}
-            </Button>
+      {/* Formulario */}
+      <Box component="form" onSubmit={handleSubmit}>
+        <Box sx={{ mb: 3 }}>
+          <Input
+            label="Correo"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoFocus
+            autoComplete="email"
+          />
+        </Box>
 
-            <Box sx={{ textAlign: 'center', mt: 2 }}>
-              <Typography variant="body2">
-                <Link
-                  to="/login"
-                  style={{ textDecoration: 'none', color: '#1976d2' }}
-                >
-                  Volver al inicio de sesión
-                </Link>
-              </Typography>
-            </Box>
-          </Box>
-        </Paper>
+        <Button type="submit" isLoading={isLoading}>
+          Enviar código
+        </Button>
+
+        <Box sx={{ mt: 3 }}>
+          <AuthLink to="/login" align="center">
+            Volver al inicio de sesión
+          </AuthLink>
+        </Box>
       </Box>
-    </Container>
+    </AuthContainer>
   );
 };
 

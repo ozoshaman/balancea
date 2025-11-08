@@ -4,21 +4,19 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { sendEmailVerificationCode, verifyEmailCode } from '../../services/api/verificationService';
 import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../store/slices/authSlice';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-} from '@mui/material';
+import { Typography, Box, Alert } from '@mui/material';
 import { Email as EmailIcon } from '@mui/icons-material';
+
+// Componentes reutilizables
+import AuthContainer from '../../components/common/AuthContainer/AuthContainer.jsx';
+import Button from '../../components/common/Button/Button.jsx';
+import VerificationCodeInput from '../../components/common/VerificationCodeInput/VerificationCodeInput.jsx';
+import ResendCodeButton from '../../components/common/ResendCodeButton/ResendCodeButton.jsx';
 
 const VerifyEmail = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
   
   const email = location.state?.email;
 
@@ -28,7 +26,6 @@ const VerifyEmail = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [canResend, setCanResend] = useState(true);
   const [countdown, setCountdown] = useState(0);
-  const dispatch = useDispatch();
 
   useEffect(() => {
     if (!email) {
@@ -78,21 +75,18 @@ const VerifyEmail = () => {
     try {
       setSuccess('¡Email verificado! Iniciando sesión y redirigiendo...');
 
-      // verifyEmailCode en el backend ahora devuelve { user, token }
       const response = await verifyEmailCode(email, code);
       const { user, token } = response;
+      
       if (token && user) {
-        // Guardar en store y localStorage
         dispatch(setCredentials({ user, token }));
 
-        // Redirigir al dashboard
         setTimeout(() => {
           navigate('/dashboard');
         }, 500);
         return;
       }
 
-      // Fallback: redirigir al login si no hay token
       setTimeout(() => {
         navigate('/login', {
           state: {
@@ -107,94 +101,101 @@ const VerifyEmail = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
+    <AuthContainer maxWidth="sm">
+      {/* Ícono de Email */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        <Box
+          sx={{
+            width: 100,
+            height: 100,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            border: '3px solid #300152',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <EmailIcon sx={{ fontSize: 56, color: '#300152' }} />
+        </Box>
+      </Box>
+
+      {/* Título */}
+      <Typography
+        variant="h5"
+        align="center"
+        gutterBottom
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          color: '#300152',
+          fontWeight: 'bold',
+          mb: 2,
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <EmailIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-            <Typography variant="h4" component="h1" gutterBottom>
-              Verifica tu Email
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Hemos enviado un código de 6 dígitos a:
-            </Typography>
-            <Typography variant="body1" fontWeight="bold" sx={{ mt: 1 }}>
-              {email}
-            </Typography>
-          </Box>
+        Verifica tu Email
+      </Typography>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+      {/* Descripción */}
+      <Typography 
+        variant="body2" 
+        align="center"
+        sx={{ 
+          color: '#300152',
+          mb: 1,
+        }}
+      >
+        Hemos enviado un código de 6 dígitos a:
+      </Typography>
+      <Typography 
+        variant="body1" 
+        align="center"
+        sx={{ 
+          color: '#300152',
+          fontWeight: 'bold',
+          mb: 3,
+        }}
+      >
+        {email}
+      </Typography>
 
-          {success && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {success}
-            </Alert>
-          )}
+      {/* Alertas */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Código de verificación"
-              value={code}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
-                if (value.length <= 6) {
-                  setCode(value);
-                }
-              }}
-              inputProps={{ 
-                maxLength: 6,
-                style: { 
-                  textAlign: 'center', 
-                  fontSize: '24px', 
-                  letterSpacing: '8px' 
-                }
-              }}
-              margin="normal"
-              autoFocus
-            />
+      {success && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {success}
+        </Alert>
+      )}
 
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={isVerifying || code.length !== 6}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {isVerifying ? <CircularProgress size={24} /> : 'Verificar'}
-            </Button>
+      {/* Formulario */}
+      <Box component="form" onSubmit={handleSubmit}>
+        <Box sx={{ mb: 3 }}>
+          <VerificationCodeInput
+            value={code}
+            onChange={setCode}
+            disabled={isVerifying}
+          />
+        </Box>
 
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                ¿No recibiste el código?
-              </Typography>
-              <Button
-                onClick={handleResendCode}
-                disabled={!canResend}
-                sx={{ mt: 1 }}
-              >
-                {canResend 
-                  ? 'Reenviar código' 
-                  : `Espera ${countdown}s para reenviar`
-                }
-              </Button>
-            </Box>
-          </Box>
-        </Paper>
+        <Button 
+          type="submit" 
+          isLoading={isVerifying}
+          disabled={code.length !== 6}
+        >
+          Verificar
+        </Button>
+
+        <ResendCodeButton
+          canResend={canResend}
+          countdown={countdown}
+          onResend={handleResendCode}
+        />
       </Box>
-    </Container>
+    </AuthContainer>
   );
 };
 

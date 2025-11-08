@@ -2,17 +2,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { resetPassword } from '../../services/api/verificationService';
-import {
-  Container,
-  Paper,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Alert,
-  CircularProgress,
-} from '@mui/material';
+import { Typography, Box, Alert } from '@mui/material';
 import { Lock as LockIcon } from '@mui/icons-material';
+
+// Componentes reutilizables
+import AuthContainer from '../../components/common/AuthContainer/AuthContainer.jsx';
+import Input from '../../components/common/Input/Input.jsx';
+import Button from '../../components/common/Button/Button.jsx';
 
 const ResetPassword = () => {
   const navigate = useNavigate();
@@ -94,74 +90,95 @@ const ResetPassword = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box
+    <AuthContainer maxWidth="sm">
+      {/* Ícono de Candado */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        <Box
+          sx={{
+            width: 100,
+            height: 100,
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            border: '3px solid #300152',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <LockIcon sx={{ fontSize: 56, color: '#300152' }} />
+        </Box>
+      </Box>
+
+      {/* Título */}
+      <Typography
+        variant="h5"
+        align="center"
+        gutterBottom
         sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          color: '#300152',
+          fontWeight: 'bold',
+          mb: 2,
         }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <LockIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-            <Typography variant="h4" component="h1" gutterBottom>
-              Nueva Contraseña
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Ingresa tu nueva contraseña
-            </Typography>
-          </Box>
+        Nueva Contraseña
+      </Typography>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+      {/* Descripción */}
+      <Typography 
+        variant="body2" 
+        align="center"
+        sx={{ 
+          color: '#300152',
+          mb: 3,
+        }}
+      >
+        Ingresa tu nueva contraseña
+      </Typography>
 
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Nueva Contraseña"
-              name="newPassword"
-              type="password"
-              value={formData.newPassword}
-              onChange={handleChange}
-              error={!!formErrors.newPassword}
-              helperText={formErrors.newPassword}
-              margin="normal"
-              autoFocus
-              autoComplete="new-password"
-            />
+      {/* Alerta de error */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-            <TextField
-              fullWidth
-              label="Confirmar Contraseña"
-              name="confirmPassword"
-              type="password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              error={!!formErrors.confirmPassword}
-              helperText={formErrors.confirmPassword}
-              margin="normal"
-              autoComplete="new-password"
-            />
+      {/* Formulario */}
+      <Box component="form" onSubmit={handleSubmit}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Input
+            label="Nueva Contraseña"
+            name="newPassword"
+            type="password"
+            value={formData.newPassword}
+            onChange={handleChange}
+            error={!!formErrors.newPassword}
+            helperText={formErrors.newPassword}
+            autoFocus
+            autoComplete="new-password"
+            showPasswordToggle
+          />
 
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={isLoading}
-              sx={{ mt: 3, mb: 2 }}
-            >
-              {isLoading ? <CircularProgress size={24} /> : 'Restablecer Contraseña'}
-            </Button>
-          </Box>
-        </Paper>
+          <Input
+            label="Confirmar Contraseña"
+            name="confirmPassword"
+            type="password"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            error={!!formErrors.confirmPassword}
+            helperText={formErrors.confirmPassword}
+            autoComplete="new-password"
+            showPasswordToggle
+          />
+        </Box>
+
+        <Box sx={{ mt: 3 }}>
+          <Button type="submit" isLoading={isLoading}>
+            Restablecer Contraseña
+          </Button>
+        </Box>
       </Box>
-    </Container>
+    </AuthContainer>
   );
 };
 

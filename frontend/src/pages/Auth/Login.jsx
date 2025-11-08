@@ -48,7 +48,7 @@ const Login = () => {
         [name]: '',
       }));
     }
-  }; 
+  };
 
   const validateForm = () => {
     const errors = {};
@@ -110,33 +110,35 @@ const Login = () => {
       )}
 
       <Box component="form" onSubmit={handleSubmit}>
-        <Input
-          label="Correo"
-          name="email"
-          type="email"
-          value={formData.email}
-          onChange={handleChange}
-          error={!!formErrors.email}
-          helperText={formErrors.email}
-          autoComplete="email"
-          autoFocus
-        />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Input
+            label="Correo"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            error={!!formErrors.email}
+            helperText={formErrors.email}
+            autoComplete="email"
+            autoFocus
+          />
 
-        <Input
-          label="Contraseña"
-          name="password"
-          type="password"
-          value={formData.password}
-          onChange={handleChange}
-          error={!!formErrors.password}
-          helperText={formErrors.password}
-          autoComplete="current-password"
-          showPasswordToggle
-        />
+          <Input
+            label="Contraseña"
+            name="password"
+            type="password"
+            value={formData.password}
+            onChange={handleChange}
+            error={!!formErrors.password}
+            helperText={formErrors.password}
+            autoComplete="current-password"
+            showPasswordToggle
+          />
 
-        <AuthLink to="/forgot-password" align="left">
-          ¿Olvidaste tu contraseña?
-        </AuthLink>
+          <AuthLink to="/forgot-password" align="left">
+            ¿Olvidaste tu contraseña?
+          </AuthLink>
+        </Box>
 
         <Box sx={{ mt: 3, mb: 2 }}>
           <Button type="submit" isLoading={isLoading}>
