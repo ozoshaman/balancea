@@ -161,7 +161,7 @@ const VerifyEmail = () => {
       {/* Alertas */}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {typeof error === 'string' ? error : error?.message || JSON.stringify(error)}
         </Alert>
       )}
 

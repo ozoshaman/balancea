@@ -1,9 +1,30 @@
 // src/services/api/axiosConfig.js
 import axios from 'axios';
 
+// Determinar baseURL según el entorno de bundler (Vite usa import.meta.env, CRA/webpack usa process.env)
+let env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+try {
+  if (import.meta && import.meta.env) {
+    env = import.meta.env;
+  }
+} catch (e) {
+  // import.meta no disponible in this environment — keep process.env
+}
+
+const baseURL = env.REACT_APP_API_URL || env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Flag de desarrollo segura (soporta varios bundlers/envs)
+const isDev = Boolean(
+  (env && (env.DEV === 'true' || env.DEV === true)) ||
+  env.NODE_ENV === 'development' ||
+  env.MODE === 'development' ||
+  env.VITE_DEV === 'true' ||
+  env.REACT_APP_ENV === 'development'
+);
+
 // Crear instancia de Axios
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -115,7 +136,7 @@ api.interceptors.response.use(
     }
 
     // Log para debugging (solo en desarrollo)
-    if (import.meta.env.DEV) {
+    if (isDev) {
       console.error('Error de Axios:', {
         message: customError.message,
         status: customError.status,

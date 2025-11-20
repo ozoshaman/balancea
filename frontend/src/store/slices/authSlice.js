@@ -16,17 +16,17 @@ export const registerUser = createAsyncThunk(
   'auth/register',
   async (userData, { rejectWithValue }) => {
     try {
-      const response = await authService.register(userData);
+      const data = await authService.register(userData);
       // Sólo persistir token/usuario si el backend devolvió token
-      if (response.data?.token) {
-        localStorage.setItem('token', response.data.token);
+      if (data?.token) {
+        localStorage.setItem('token', data.token);
       }
-      if (response.data?.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+      if (data?.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
       }
-      return response.data;
+      return data;
     } catch (error) {
-      return rejectWithValue(error.message || 'Error al registrar usuario');
+      return rejectWithValue(error || { message: 'Error al registrar usuario' });
     }
   }
 );
@@ -35,12 +35,12 @@ export const loginUser = createAsyncThunk(
   'auth/login',
   async (credentials, { rejectWithValue }) => {
     try {
-      const response = await authService.login(credentials);
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      return response.data;
+      const data = await authService.login(credentials);
+      if (data?.token) localStorage.setItem('token', data.token);
+      if (data?.user) localStorage.setItem('user', JSON.stringify(data.user));
+      return data;
     } catch (error) {
-      return rejectWithValue(error.message || 'Error al iniciar sesión');
+      return rejectWithValue(error || { message: 'Error al iniciar sesión' });
     }
   }
 );
@@ -49,12 +49,12 @@ export const verifyAuth = createAsyncThunk(
   'auth/verify',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await authService.verifyToken();
-      return response.data;
+      const data = await authService.verifyToken();
+      return data;
     } catch (error) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      return rejectWithValue(error.message || 'Sesión expirada');
+      return rejectWithValue(error || { message: 'Sesión expirada' });
     }
   }
 );

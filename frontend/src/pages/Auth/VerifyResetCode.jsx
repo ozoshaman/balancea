@@ -81,7 +81,14 @@ const VerifyResetCode = () => {
         });
       }, 1000);
     } catch (err) {
-      setError(err.message || 'Código inválido o expirado');
+      // Mapear errores por campo
+      const { mapServerErrorsToForm, formatServerMessage } = await import('../../utils/errorUtils');
+      const fieldErrors = mapServerErrorsToForm(err);
+      if (fieldErrors && fieldErrors.code) {
+        setError(fieldErrors.code);
+      } else {
+        setError(formatServerMessage(err) || 'Código inválido o expirado');
+      }
       setIsVerifying(false);
     }
   };
@@ -147,7 +154,7 @@ const VerifyResetCode = () => {
       {/* Alertas */}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {typeof error === 'string' ? error : error?.message || JSON.stringify(error)}
         </Alert>
       )}
 

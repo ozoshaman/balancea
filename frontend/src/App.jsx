@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import { router } from './config/routes';
 import store from './store';
+import ErrorBoundary from './components/common/ErrorBoundary/ErrorBoundary';
 
 // Tema de Material-UI
 const theme = createTheme({
@@ -22,7 +23,9 @@ function App() {
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <RouterProvider router={router} />
+        <ErrorBoundary>
+          <RouterProvider router={router} />
+        </ErrorBoundary>
       </ThemeProvider>
     </Provider>
   );
