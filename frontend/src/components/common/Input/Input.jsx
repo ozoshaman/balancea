@@ -1,20 +1,19 @@
-// src/components/common/Input.jsx
-import { TextField, InputAdornment, IconButton } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+// src/components/common/Input/Input.jsx
 import { useState } from 'react';
+import { TextField, IconButton, InputAdornment } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const Input = ({
   label,
-  name,
   type = 'text',
+  name,
   value,
   onChange,
-  error,
-  helperText,
-  autoComplete,
+  error = false,
+  helperText = '',
   autoFocus = false,
+  autoComplete,
   showPasswordToggle = false,
-  fullWidth = true,
   ...props
 }) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -27,7 +26,7 @@ const Input = ({
 
   return (
     <TextField
-      fullWidth={fullWidth}
+      fullWidth
       label={label}
       name={name}
       type={inputType}
@@ -35,53 +34,65 @@ const Input = ({
       onChange={onChange}
       error={error}
       helperText={helperText}
-      autoComplete={autoComplete}
       autoFocus={autoFocus}
-      InputProps={{
-        endAdornment: showPasswordToggle ? (
-          <InputAdornment position="end">
-            <IconButton
-              onClick={handleTogglePassword}
-              edge="end"
-              sx={{ color: '#300152' }}
-              aria-label="toggle password visibility"
-            >
-              {showPassword ? <VisibilityOff /> : <Visibility />}
-            </IconButton>
-          </InputAdornment>
-        ) : null,
+      autoComplete={autoComplete}
+      variant="outlined"
+      // SOLUCIÓN: Forzar que el label siempre esté en posición "shrink" cuando hay valor
+      InputLabelProps={{
+        shrink: value ? true : undefined,
+        sx: {
+          // Posicionar el label completamente por encima del borde
+          '&.MuiInputLabel-shrink': {
+            transform: 'translate(14px, -9px) scale(0.75)',
+            backgroundColor: 'white',
+            padding: '0 4px',
+          },
+        },
       }}
       sx={{
-        width: '100%',
         '& .MuiOutlinedInput-root': {
-          backgroundColor: 'rgba(255, 255, 255, 0.9)',
-          borderRadius: 2,
+          backgroundColor: 'white',
           '& fieldset': {
-            borderColor: 'transparent',
+            borderColor: '#300152',
+            borderWidth: '2px',
           },
           '&:hover fieldset': {
-            borderColor: '#300152',
+            borderColor: '#4a0182',
           },
           '&.Mui-focused fieldset': {
             borderColor: '#300152',
+            borderWidth: '2px',
+          },
+          '&.Mui-error fieldset': {
+            borderColor: '#d32f2f',
           },
         },
         '& .MuiInputLabel-root': {
           color: '#300152',
-          fontWeight: 600,
-        },
-        '& .MuiInputLabel-root.Mui-focused': {
-          color: '#300152',
+          '&.Mui-focused': {
+            color: '#300152',
+          },
+          '&.Mui-error': {
+            color: '#d32f2f',
+          },
         },
         '& .MuiFormHelperText-root': {
-          backgroundColor: 'transparent',
           marginLeft: 0,
-          marginRight: 0,
-          height: '20px',
-          minHeight: '20px',
         },
-        '& .MuiInputBase-input': {
-          color: '#300152',
+      }}
+      slotProps={{
+        input: {
+          endAdornment: showPasswordToggle ? (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={handleTogglePassword}
+                edge="end"
+                sx={{ color: '#300152' }}
+              >
+                {showPassword ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </InputAdornment>
+          ) : null,
         },
       }}
       {...props}

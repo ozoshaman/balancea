@@ -1,4 +1,4 @@
-// src/services/api/authService.js
+// src/services/api/authService.js (FRONTEND)
 import api from './axiosConfig';
 
 /**
@@ -11,7 +11,12 @@ export const register = async (userData) => {
     const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al registrar usuario' };
+    // El error ya viene procesado por el interceptor de axios
+    throw {
+      message: error.message || 'Error al registrar usuario',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 
@@ -25,7 +30,12 @@ export const login = async (credentials) => {
     const response = await api.post('/auth/login', credentials);
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al iniciar sesión' };
+    // El error ya viene procesado por el interceptor de axios
+    throw {
+      message: error.message || 'Error al iniciar sesión',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 
@@ -38,7 +48,12 @@ export const verifyToken = async () => {
     const response = await api.get('/auth/verify');
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al verificar token' };
+    // El error ya viene procesado por el interceptor de axios
+    throw {
+      message: error.message || 'Error al verificar token',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 

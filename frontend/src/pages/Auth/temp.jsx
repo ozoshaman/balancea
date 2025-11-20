@@ -1,9 +1,9 @@
 // src/pages/Auth/VerifyEmail.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { sendEmailVerificationCode, verifyEmailCode } from '../../services/api/verificationService';
+import { sendEmailVerificationCode, verifyEmailCode } from '../../services/api/verificationService.js';
 import { useDispatch } from 'react-redux';
-import { setCredentials } from '../../store/slices/authSlice';
+import { setCredentials } from '../../store/slices/authSlice.js';
 import { Typography, Box, Alert } from '@mui/material';
 import { Email as EmailIcon } from '@mui/icons-material';
 
