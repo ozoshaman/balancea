@@ -1,4 +1,4 @@
-// src/services/api/verificationService.js
+// src/services/api/verificationService.js (FRONTEND)
 import api from './axiosConfig';
 
 /**
@@ -9,7 +9,11 @@ export const sendEmailVerificationCode = async (email) => {
     const response = await api.post('/verification/send-email-code', { email });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al enviar código' };
+    throw {
+      message: error.message || 'Error al enviar código',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 
@@ -21,7 +25,11 @@ export const verifyEmailCode = async (email, code) => {
     const response = await api.post('/verification/verify-email', { email, code });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al verificar código' };
+    throw {
+      message: error.message || 'Error al verificar código',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 
@@ -33,7 +41,11 @@ export const forgotPassword = async (email) => {
     const response = await api.post('/verification/forgot-password', { email });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al solicitar recuperación' };
+    throw {
+      message: error.message || 'Error al solicitar recuperación',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 
@@ -45,7 +57,11 @@ export const verifyResetCode = async (email, code) => {
     const response = await api.post('/verification/verify-reset-code', { email, code });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al verificar código' };
+    throw {
+      message: error.message || 'Error al verificar código',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
 
@@ -61,6 +77,10 @@ export const resetPassword = async (email, code, newPassword) => {
     });
     return response.data;
   } catch (error) {
-    throw error.response?.data || { message: 'Error al restablecer contraseña' };
+    throw {
+      message: error.message || 'Error al restablecer contraseña',
+      status: error.status || 500,
+      data: error.data
+    };
   }
 };
