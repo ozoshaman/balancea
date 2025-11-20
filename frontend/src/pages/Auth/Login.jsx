@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Typography, Box, Alert } from '@mui/material';
+import { mapServerErrorsToForm } from '../../utils/errorUtils';
 
 // Componentes reutilizables
 import AuthContainer from '../../components/common/AuthContainer/AuthContainer.jsx';
@@ -77,6 +78,21 @@ const Login = () => {
       navigate('/dashboard');
     } catch (err) {
       console.error('Error al iniciar sesión:', err);
+      // Mapear errores de validación por campo si el backend los envió
+      const fieldErrors = mapServerErrorsToForm(err);
+      // Sólo aplicar fieldErrors si contienen keys de los campos del formulario
+      if (fieldErrors && (fieldErrors.email || fieldErrors.password)) {
+        setFormErrors((prev) => ({ ...prev, ...fieldErrors }));
+        return;
+      }
+
+      // Para errores de credenciales (401) mostramos el mensaje debajo del campo email
+      if (err && err.status === 401) {
+        setFormErrors((prev) => ({ ...prev, email: err.message || 'Email o contraseña incorrectos' }));
+        return;
+      }
+
+      // Si no hay errores por campo, setear mensaje general en Alert vía estado global (auth slice)
     }
   };
 
@@ -105,7 +121,7 @@ const Login = () => {
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {typeof error === 'string' ? error : error?.message || JSON.stringify(error)}
         </Alert>
       )}
 

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { sendEmailVerificationCode } from '../../services/api/verificationService';
-import { Typography, Box, Grid, Alert } from '@mui/material';
+import { Typography, Box, Alert } from '@mui/material';
 import { PersonAddOutlined } from '@mui/icons-material';
 
 // Componentes reutilizables
@@ -29,6 +29,7 @@ const Register = () => {
   });
 
   const [formErrors, setFormErrors] = useState({});
+  const [serverMessage, setServerMessage] = useState('');
   const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -59,6 +60,10 @@ const Register = () => {
         ...prev,
         [name]: '',
       }));
+    }
+    // Limpiar mensaje genérico del servidor cuando el usuario cambia campos
+    if (serverMessage) {
+      setServerMessage('');
     }
   };
 
@@ -118,6 +123,29 @@ const Register = () => {
     } catch (err) {
       console.error('Error al registrar usuario:', err);
       setIsSubmitting(false);
+
+      // Mostrar mensaje general del servidor localmente para evitar depender solo del estado global
+      const serverMsg = err?.message || err?.data?.message || '';
+      setServerMessage(serverMsg);
+
+      // Si el backend devolvió errores de validación por campo, mostrarlos en el formulario
+      const validationErrors = err?.data?.errors || err?.errors || null;
+      if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+        const fieldErrors = {};
+        validationErrors.forEach((ve) => {
+          if (ve.field) fieldErrors[ve.field] = ve.message || 'Error';
+        });
+        setFormErrors((prev) => ({ ...prev, ...fieldErrors }));
+        return;
+      }
+
+      // Si es conflicto (por ejemplo email duplicado) asignarlo al campo email
+      if (err?.status === 409) {
+        setFormErrors((prev) => ({ ...prev, email: serverMsg || 'Ya existe un usuario con este email' }));
+        return;
+      }
+
+      // Si no hay errores por campo, dejaremos que el Alert muestre el mensaje desde el estado global
     }
   };
 
@@ -138,9 +166,9 @@ const Register = () => {
         Crear Cuenta
       </Typography>
 
-      {error && (
+      {(serverMessage || error) && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {serverMessage || (typeof error === 'string' ? error : error?.message)}
         </Alert>
       )}
 

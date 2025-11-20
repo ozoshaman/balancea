@@ -84,7 +84,13 @@ const ResetPassword = () => {
         } 
       });
     } catch (err) {
-      setError(err.message || 'Error al restablecer contraseña');
+      const { mapServerErrorsToForm, formatServerMessage } = await import('../../utils/errorUtils');
+      const fieldErrors = mapServerErrorsToForm(err);
+      if (fieldErrors) {
+        setFormErrors((prev) => ({ ...prev, ...fieldErrors }));
+      } else {
+        setError(formatServerMessage(err) || 'Error al restablecer contraseña');
+      }
       setIsLoading(false);
     }
   };
@@ -139,7 +145,7 @@ const ResetPassword = () => {
       {/* Alerta de error */}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {typeof error === 'string' ? error : error?.message || JSON.stringify(error)}
         </Alert>
       )}
 

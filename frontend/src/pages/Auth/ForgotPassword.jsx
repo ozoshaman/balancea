@@ -40,7 +40,14 @@ const ForgotPassword = () => {
       // Redirigir a la página de verificación de código
       navigate('/verify-reset-code', { state: { email } });
     } catch (err) {
-      setError(err.message || 'Error al solicitar recuperación');
+      // Mostrar errores por campo si vienen del servidor
+      const { mapServerErrorsToForm, formatServerMessage } = await import('../../utils/errorUtils');
+      const fieldErrors = mapServerErrorsToForm(err);
+      if (fieldErrors && fieldErrors.email) {
+        setError(fieldErrors.email);
+      } else {
+        setError(formatServerMessage(err) || 'Error al solicitar recuperación');
+      }
       setIsLoading(false);
     }
   };
@@ -95,7 +102,7 @@ const ForgotPassword = () => {
       {/* Alerta de error */}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {typeof error === 'string' ? error : error?.message || JSON.stringify(error)}
         </Alert>
       )}
 
