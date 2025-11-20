@@ -1,116 +1,114 @@
 // src/pages/Dashboard/Dashboard.jsx
-import { useAuth } from '../../hooks/useAuth';
-import {
-  Container,
-  Paper,
-  Typography,
-  Box,
-  Button,
-  Avatar,
-  Chip,
-} from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { Box, Container, Grid, Typography, Paper } from '@mui/material';
+import { TrendingUp } from '@mui/icons-material';
+import Navigation from '../../components/layout/Navigation/Navigation.jsx';
+import BalanceCard from '../../components/common/BalanceCard/BalanceCard.jsx';
+import BalanceChart from '../../components/common/BalanceChart/BalanceChart.jsx';
+import TransactionsList from '../../components/common/TransactionsList/TransactionsList.jsx';
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  // TODO: Reemplazar con datos del hook useDashboard o API
+  const mockData = {
+    ingresos: 1299,
+    gastos: 912,
+    balance: 287,
+    ahorro: 650,
+    transactions: [
+      { type: 'income', amount: 233, category: 'Salario' },
+      { type: 'expense', amount: 456, category: 'Compras' },
+      { type: 'expense', amount: 456, category: 'Comida' },
+      { type: 'income', amount: 233, category: 'Freelance' },
+      { type: 'income', amount: 833, category: 'Inversión' },
+    ],
   };
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ py: 4 }}>
-        <Paper elevation={3} sx={{ p: 4 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mb: 4,
-            }}
-          >
-            <Typography variant="h4" component="h1">
-              Dashboard
-            </Typography>
-            <Button variant="outlined" color="error" onClick={handleLogout}>
-              Cerrar Sesión
-            </Button>
-          </Box>
+    <Box sx={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <Navigation />
 
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2,
-              mb: 3,
-            }}
-          >
-            <Avatar
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        {/* Título */}
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: 'bold',
+            mb: 3,
+            color: '#2c3e50',
+          }}
+        >
+          Dashboard
+        </Typography>
+
+        <Grid container spacing={3}>
+          {/* Columna Izquierda */}
+          <Grid item xs={12} md={7}>
+            <Paper
+              elevation={3}
               sx={{
-                width: 64,
-                height: 64,
-                bgcolor: 'primary.main',
-                fontSize: '1.5rem',
+                p: 3,
+                backgroundColor: '#300152',
+                borderRadius: 2,
+                height: '100%',
               }}
             >
-              {user?.firstName?.charAt(0)}
-              {user?.lastName?.charAt(0)}
-            </Avatar>
-            <Box>
-              <Typography variant="h5">
-                {user?.firstName} {user?.lastName}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {user?.email}
-              </Typography>
-              <Chip
-                label={user?.role}
-                color={user?.role === 'PREMIUM' ? 'success' : 'default'}
-                size="small"
-                sx={{ mt: 1 }}
-              />
-            </Box>
-          </Box>
+              {/* Título con icono - Esquina superior izquierda */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                <TrendingUp sx={{ color: '#ffffff', fontSize: 22 }} />
+                <Typography
+                  variant="h5"
+                  sx={{
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    textAlign: 'left',
+                  }}
+                >
+                  Detalles de balance
+                </Typography>
+              </Box>
 
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h6" gutterBottom>
-              ¡Bienvenido a Balancea! 🎉
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Has iniciado sesión correctamente. Aquí podrás gestionar tus
-              finanzas personales de manera simple e intuitiva.
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Este es el Dashboard principal. Próximamente podrás:
-            </Typography>
-            <Box component="ul" sx={{ mt: 1 }}>
-              <li>
-                <Typography variant="body2">
-                  Registrar ingresos y gastos
-                </Typography>
-              </li>
-              <li>
-                <Typography variant="body2">Categorizar transacciones</Typography>
-              </li>
-              <li>
-                <Typography variant="body2">Ver tu balance general</Typography>
-              </li>
-              <li>
-                <Typography variant="body2">Configurar presupuestos</Typography>
-              </li>
-              <li>
-                <Typography variant="body2">
-                  Visualizar gráficos y reportes
-                </Typography>
-              </li>
-            </Box>
-          </Box>
-        </Paper>
-      </Box>
-    </Container>
+              {/* Tarjetas de balance - Alineadas horizontalmente */}
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={4}>
+                  <BalanceCard type="ingresos" amount={mockData.ingresos} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <BalanceCard type="gastos" amount={mockData.gastos} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <BalanceCard
+                    type="balance"
+                    amount={mockData.balance}
+                    savingsAmount={mockData.ahorro}
+                  />
+                </Grid>
+              </Grid>
+
+              {/* Gráfico - Parte inferior izquierda */}
+              <Box sx={{ minHeight: 280 }}>
+                <BalanceChart ingresos={mockData.ingresos} gastos={mockData.gastos} />
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Columna Derecha - Transacciones */}
+          <Grid item xs={12} md={5}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: 3,
+                backgroundColor: '#300152',
+                borderRadius: 2,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <TransactionsList transactions={mockData.transactions} transparent />
+            </Paper>
+          </Grid>
+        </Grid>
+      </Container>
+    </Box>
   );
 };
 
