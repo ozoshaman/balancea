@@ -29,8 +29,8 @@
     "workbox-window": "^7.3.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "start": "node scripts/copy-sw.js && react-scripts start",
+    "build": "node scripts/copy-sw.js && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
