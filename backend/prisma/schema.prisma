@@ -21,6 +21,11 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Relaciones
+  transactions          Transaction[]
+  categories            Category[]
+  recurringTransactions RecurringTransaction[]
+
   @@map("users")
 }
 
@@ -37,6 +42,64 @@ model VerificationCode {
   @@map("verification_codes")
 }
 
+model Category {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  color        String   @default("#3B82F6")
+  icon         String   @default("📁")
+  isDefault    Boolean  @default(false) // Marca si es General o Personal
+  userId       String   @db.ObjectId
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relaciones
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("categories")
+}
+
+model Transaction {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  type        TransactionType
+  amount      Float
+  date        DateTime
+  description String?
+  categoryId  String          @db.ObjectId
+  category    Category        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  userId      String          @db.ObjectId
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId, date])
+  @@index([categoryId])
+  @@map("transactions")
+}
+
+model RecurringTransaction {
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  type        TransactionType
+  amount      Float
+  description String?
+  categoryId  String          @db.ObjectId
+  frequency   Frequency
+  startDate   DateTime
+  endDate     DateTime?
+  nextRun     DateTime
+  isActive    Boolean         @default(true)
+  userId      String          @db.ObjectId
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId, isActive, nextRun])
+  @@map("recurring_transactions")
+}
+
 enum Role {
   FREE
   PREMIUM
@@ -46,4 +109,16 @@ enum Role {
 enum CodeType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
 }

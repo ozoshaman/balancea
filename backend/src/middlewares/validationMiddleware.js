@@ -19,3 +19,6 @@ export const handleValidationErrors = (req, res, next) => {
   
   next();
 };
+
+// Alias para compatibilidad
+export const validate = handleValidationErrors;
