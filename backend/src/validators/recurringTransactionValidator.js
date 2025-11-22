@@ -1,7 +1,7 @@
-// src/validators/transactionValidator.js
+// src/validators/recurringTransactionValidator.js
 import { body, query, param } from 'express-validator';
 
-export const createTransactionValidation = [
+export const createRecurringValidation = [
   body('title')
     .trim()
     .notEmpty()
@@ -21,12 +21,6 @@ export const createTransactionValidation = [
     .isFloat({ min: 0.01 })
     .withMessage('El monto debe ser mayor a 0'),
 
-  body('date')
-    .notEmpty()
-    .withMessage('La fecha es requerida')
-    .isISO8601()
-    .withMessage('La fecha debe ser válida (ISO 8601)'),
-
   body('description')
     .optional()
     .trim()
@@ -38,10 +32,27 @@ export const createTransactionValidation = [
     .withMessage('La categoría es requerida')
     .isMongoId()
     .withMessage('ID de categoría inválido'),
+
+  body('frequency')
+    .notEmpty()
+    .withMessage('La frecuencia es requerida')
+    .isIn(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'])
+    .withMessage('La frecuencia debe ser DAILY, WEEKLY, MONTHLY o YEARLY'),
+
+  body('startDate')
+    .notEmpty()
+    .withMessage('La fecha de inicio es requerida')
+    .isISO8601()
+    .withMessage('La fecha de inicio debe ser válida'),
+
+  body('endDate')
+    .optional()
+    .isISO8601()
+    .withMessage('La fecha de fin debe ser válida'),
 ];
 
-export const updateTransactionValidation = [
-  param('id').isMongoId().withMessage('ID de transacción inválido'),
+export const updateRecurringValidation = [
+  param('id').isMongoId().withMessage('ID de transacción recurrente inválido'),
 
   body('title')
     .optional()
@@ -59,11 +70,6 @@ export const updateTransactionValidation = [
     .isFloat({ min: 0.01 })
     .withMessage('El monto debe ser mayor a 0'),
 
-  body('date')
-    .optional()
-    .isISO8601()
-    .withMessage('La fecha debe ser válida (ISO 8601)'),
-
   body('description')
     .optional()
     .trim()
@@ -74,40 +80,35 @@ export const updateTransactionValidation = [
     .optional()
     .isMongoId()
     .withMessage('ID de categoría inválido'),
-];
 
-export const getTransactionsValidation = [
-  query('startDate')
+  body('frequency')
+    .optional()
+    .isIn(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'])
+    .withMessage('La frecuencia debe ser DAILY, WEEKLY, MONTHLY o YEARLY'),
+
+  body('startDate')
     .optional()
     .isISO8601()
-    .withMessage('startDate debe ser una fecha válida'),
+    .withMessage('La fecha de inicio debe ser válida'),
 
-  query('endDate')
+  body('endDate')
     .optional()
     .isISO8601()
-    .withMessage('endDate debe ser una fecha válida'),
+    .withMessage('La fecha de fin debe ser válida'),
 
-  query('type')
+  body('isActive')
     .optional()
-    .isIn(['INCOME', 'EXPENSE'])
-    .withMessage('type debe ser INCOME o EXPENSE'),
-
-  query('categoryId')
-    .optional()
-    .isMongoId()
-    .withMessage('categoryId debe ser un ID válido'),
-
-  query('limit')
-    .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage('limit debe ser un número entre 1 y 100'),
-
-  query('offset')
-    .optional()
-    .isInt({ min: 0 })
-    .withMessage('offset debe ser un número mayor o igual a 0'),
+    .isBoolean()
+    .withMessage('isActive debe ser un booleano'),
 ];
 
-export const transactionIdValidation = [
-  param('id').isMongoId().withMessage('ID de transacción inválido'),
+export const recurringIdValidation = [
+  param('id').isMongoId().withMessage('ID de transacción recurrente inválido'),
+];
+
+export const getRecurringValidation = [
+  query('isActive')
+    .optional()
+    .isIn(['true', 'false'])
+    .withMessage('isActive debe ser true o false'),
 ];

@@ -1,4 +1,4 @@
-// src/services/authService.js (BACKEND)
+// src/services/authService.js
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, comparePassword } from '../utils/bcryptUtils.js';
 import { generateToken } from '../utils/jwtUtils.js';
@@ -16,7 +16,7 @@ export const registerUser = async ({ email, password, firstName, lastName }) => 
 		
 		if (existingUser) {
 			const err = new Error('Este email ya está registrado');
-			err.status = 409; // Conflict
+			err.status = 409;
 			throw err;
 		}
 
@@ -51,42 +51,64 @@ export const registerUser = async ({ email, password, firstName, lastName }) => 
 		// Hashear la contraseña
 		const hashedPassword = await hashPassword(password);
 
-		// Crear el usuario (sin verificar)
-		const user = await prisma.user.create({
-			data: {
-				email: email.toLowerCase().trim(),
-				password: hashedPassword,
-				firstName: firstName.trim(),
-				lastName: lastName.trim(),
-				role: 'FREE',
-				isVerified: false,
-			},
-			select: {
-				id: true,
-				email: true,
-				firstName: true,
-				lastName: true,
-				role: true,
-				isVerified: true,
-				createdAt: true,
-			},
+		// Crear el usuario y sus categorías por defecto en una transacción
+		const result = await prisma.$transaction(async (tx) => {
+			// Crear usuario
+			const user = await tx.user.create({
+				data: {
+					email: email.toLowerCase().trim(),
+					password: hashedPassword,
+					firstName: firstName.trim(),
+					lastName: lastName.trim(),
+					role: 'FREE',
+					isVerified: false,
+				},
+				select: {
+					id: true,
+					email: true,
+					firstName: true,
+					lastName: true,
+					role: true,
+					isVerified: true,
+					createdAt: true,
+				},
+			});
+
+			// Crear categorías por defecto para el nuevo usuario
+			await tx.category.createMany({
+				data: [
+					{
+						name: 'General',
+						color: '#6B7280',
+						icon: '📁',
+						isDefault: true,
+						userId: user.id,
+					},
+					{
+						name: 'Personal',
+						color: '#8B5CF6',
+						icon: '👤',
+						isDefault: true,
+						userId: user.id,
+					},
+				],
+			});
+
+			return user;
 		});
 
-		return { user, requiresVerification: true };
+		return { user: result, requiresVerification: true };
 	} catch (error) {
-		// Si es un error que ya creamos, simplemente lo propagamos
 		if (error.status) {
 			throw error;
 		}
 		
-		// Si es un error de Prisma por clave duplicada
 		if (error.code === 'P2002') {
 			const err = new Error('Este email ya está registrado');
 			err.status = 409;
 			throw err;
 		}
 		
-		// Error genérico
 		console.error('Error en registerUser:', error);
 		const err = new Error('Error al crear el usuario');
 		err.status = 500;
@@ -106,21 +128,21 @@ export const loginUser = async ({ email, password }) => {
 
 		if (!user) {
 			const err = new Error('Email o contraseña incorrectos');
-			err.status = 401; // Unauthorized
+			err.status = 401;
 			throw err;
 		}
 
 		// Verificar si el usuario está activo
 		if (!user.isActive) {
 			const err = new Error('Tu cuenta está inactiva. Por favor contacta al administrador');
-			err.status = 403; // Forbidden
+			err.status = 403;
 			throw err;
 		}
 
 		// Verificar si el email está verificado
 		if (!user.isVerified) {
 			const err = new Error('Por favor verifica tu email antes de iniciar sesión');
-			err.status = 403; // Forbidden
+			err.status = 403;
 			throw err;
 		}
 
@@ -157,12 +179,10 @@ export const loginUser = async ({ email, password }) => {
 
 		return { user: userData, token };
 	} catch (error) {
-		// Si es un error que ya creamos, simplemente lo propagamos
 		if (error.status) {
 			throw error;
 		}
 		
-		// Error genérico
 		console.error('Error en loginUser:', error);
 		const err = new Error('Error al iniciar sesión');
 		err.status = 500;

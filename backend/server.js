@@ -2,6 +2,9 @@
 import 'dotenv/config';
 import app from './src/app.js';
 import { PrismaClient } from '@prisma/client';
+import { startRecurringTransactionsCron } from './src/jobs/recurringTransactions.js';
+
+
 
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +27,7 @@ const startServer = async () => {
   app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
     console.log(`📝 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+     startRecurringTransactionsCron();
   });
 };
 
