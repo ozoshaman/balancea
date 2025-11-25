@@ -5,6 +5,8 @@ import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import { router } from './config/routes';
 import store from './store';
 import ErrorBoundary from './components/common/ErrorBoundary/ErrorBoundary';
+// NOTE: Notifications and direct components are provided via routes.
+
 
 // Tema de Material-UI
 const theme = createTheme({
