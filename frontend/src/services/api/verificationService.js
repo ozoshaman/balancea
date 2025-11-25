@@ -9,11 +9,10 @@ export const sendEmailVerificationCode = async (email) => {
     const response = await api.post('/verification/send-email-code', { email });
     return response.data;
   } catch (error) {
-    throw {
-      message: error.message || 'Error al enviar código',
-      status: error.status || 500,
-      data: error.data
-    };
+    const err = new Error(error.message || 'Error al enviar código');
+    err.status = error.status || 500;
+    err.data = error.data;
+    throw err;
   }
 };
 
@@ -25,11 +24,10 @@ export const verifyEmailCode = async (email, code) => {
     const response = await api.post('/verification/verify-email', { email, code });
     return response.data;
   } catch (error) {
-    throw {
-      message: error.message || 'Error al verificar código',
-      status: error.status || 500,
-      data: error.data
-    };
+    const err = new Error(error.message || 'Error al verificar código');
+    err.status = error.status || 500;
+    err.data = error.data;
+    throw err;
   }
 };
 
@@ -41,11 +39,10 @@ export const forgotPassword = async (email) => {
     const response = await api.post('/verification/forgot-password', { email });
     return response.data;
   } catch (error) {
-    throw {
-      message: error.message || 'Error al solicitar recuperación',
-      status: error.status || 500,
-      data: error.data
-    };
+    const err = new Error(error.message || 'Error al solicitar recuperación');
+    err.status = error.status || 500;
+    err.data = error.data;
+    throw err;
   }
 };
 
@@ -57,11 +54,10 @@ export const verifyResetCode = async (email, code) => {
     const response = await api.post('/verification/verify-reset-code', { email, code });
     return response.data;
   } catch (error) {
-    throw {
-      message: error.message || 'Error al verificar código',
-      status: error.status || 500,
-      data: error.data
-    };
+    const err = new Error(error.message || 'Error al verificar código');
+    err.status = error.status || 500;
+    err.data = error.data;
+    throw err;
   }
 };
 
@@ -77,10 +73,9 @@ export const resetPassword = async (email, code, newPassword) => {
     });
     return response.data;
   } catch (error) {
-    throw {
-      message: error.message || 'Error al restablecer contraseña',
-      status: error.status || 500,
-      data: error.data
-    };
+    const err = new Error(error.message || 'Error al restablecer contraseña');
+    err.status = error.status || 500;
+    err.data = error.data;
+    throw err;
   }
 };

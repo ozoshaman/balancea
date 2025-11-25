@@ -24,6 +24,12 @@ export const registerUser = createAsyncThunk(
       if (data?.user) {
         localStorage.setItem('user', JSON.stringify(data.user));
       }
+      // Guardar token también en Service Worker (IndexedDB) para uso en sync desde SW
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator && data?.token) {
+        navigator.serviceWorker.ready
+          .then((reg) => reg.active && reg.active.postMessage({ type: 'SAVE_AUTH_TOKEN', token: data.token }))
+          .catch(() => {});
+      }
       return data;
     } catch (error) {
       return rejectWithValue(error || { message: 'Error al registrar usuario' });
@@ -38,6 +44,12 @@ export const loginUser = createAsyncThunk(
       const data = await authService.login(credentials);
       if (data?.token) localStorage.setItem('token', data.token);
       if (data?.user) localStorage.setItem('user', JSON.stringify(data.user));
+      // También guardar token en Service Worker para que pueda usarlo al sincronizar
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator && data?.token) {
+        navigator.serviceWorker.ready
+          .then((reg) => reg.active && reg.active.postMessage({ type: 'SAVE_AUTH_TOKEN', token: data.token }))
+          .catch(() => {});
+      }
       return data;
     } catch (error) {
       return rejectWithValue(error || { message: 'Error al iniciar sesión' });
@@ -76,6 +88,11 @@ const authSlice = createSlice({
       const { user, token } = action.payload;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator && token) {
+        navigator.serviceWorker.ready
+          .then((reg) => reg.active && reg.active.postMessage({ type: 'SAVE_AUTH_TOKEN', token }))
+          .catch(() => {});
+      }
       state.user = user;
       state.token = token;
       state.isAuthenticated = true;
