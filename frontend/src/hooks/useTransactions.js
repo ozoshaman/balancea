@@ -151,27 +151,33 @@ const useTransactions = () => {
   // ============================
   // Detectar cambios de conexión
   // ============================
+  // ============================
+// Detectar cambios de conexión
+// ============================
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
       console.log('🌐 Conexión restaurada');
       setIsOnline(true);
       
-      // Intentar sincronizar automáticamente
       if (user?.id) {
-        // First sync pending categories, then transactions to resolve temp IDs
-        (async () => {
-          try {
-            await syncService.syncPendingCategories(user.id);
-          } catch (e) {
-            console.warn('Error sincronizando categorías al reconectar:', e);
+        try {
+          // ⚠️ PASO 1: Sincronizar categorías PRIMERO
+          console.log('🔄 Sincronizando categorías pendientes...');
+          const catResult = await syncService.syncPendingCategories(user.id);
+          
+          if (catResult.success && catResult.synced > 0) {
+            console.log(`✅ ${catResult.synced} categorías sincronizadas`);
           }
-
-          try {
-            await syncTransactions();
-          } catch (e) {
-            console.warn('Error sincronizando transacciones al reconectar:', e);
-          }
-        })();
+          
+          // ⚠️ PASO 2: Esperar un momento para que el Service Worker vea los cambios
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // ⚠️ PASO 3: Sincronizar transacciones
+          console.log('🔄 Sincronizando transacciones pendientes...');
+          await syncTransactions();
+        } catch (e) {
+          console.warn('Error sincronizando al reconectar:', e);
+        }
       }
     };
 
@@ -187,7 +193,7 @@ const useTransactions = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [user, syncTransactions]);
+  }, [user, syncTransactions]); // ⚠️ Agregar syncTransactions como dependencia
 
   // ============================
   // Escuchar eventos de sincronización

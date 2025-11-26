@@ -42,19 +42,22 @@ model VerificationCode {
   @@map("verification_codes")
 }
 
+
 model Category {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   name         String
   color        String   @default("#3B82F6")
   icon         String   @default("📁")
-  isDefault    Boolean  @default(false) // Marca si es General o Personal
+  isDefault    Boolean  @default(false)
   userId       String   @db.ObjectId
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relaciones
-  transactions Transaction[]
+  transactions          Transaction[]
+  // ⚠️ AGREGAR ESTA RELACIÓN:
+  recurringTransactions RecurringTransaction[] @relation("RecurringTransactionCategory")
 
   @@index([userId])
   @@map("categories")
@@ -86,6 +89,8 @@ model RecurringTransaction {
   amount      Float
   description String?
   categoryId  String          @db.ObjectId
+  // ⚠️ AGREGAR ESTA RELACIÓN:
+  category    Category        @relation("RecurringTransactionCategory", fields: [categoryId], references: [id], onDelete: Restrict)
   frequency   Frequency
   startDate   DateTime
   endDate     DateTime?
@@ -97,6 +102,7 @@ model RecurringTransaction {
   updatedAt   DateTime        @updatedAt
 
   @@index([userId, isActive, nextRun])
+  @@index([categoryId]) // ⚠️ AGREGAR ESTE ÍNDICE
   @@map("recurring_transactions")
 }
 
