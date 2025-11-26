@@ -6,6 +6,22 @@ importScripts('https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js');
 const CACHE_NAME = 'balancea-v1';
 const RUNTIME_CACHE = 'balancea-runtime-v1';
 const API_CACHE = 'balancea-api-v1';
+let isSyncingTransactions = false;
+// Backend API base URL (use explicit backend host because SW requests
+// can't rely on dev-server proxy). Adjust for production via build-time
+// replacement if needed.
+const API_BASE = 'http://localhost:5000/api';
+
+// In-memory pending auth token (used if IndexedDB `settings` table is not yet available)
+let pendingAuthToken = '';
+
+function hasTable(name) {
+  try {
+    return Array.isArray(db.tables) && db.tables.some(t => t.name === name);
+  } catch (e) {
+    return false;
+  }
+}
 
 // URLs a cachear durante la instalación (App Shell)
 const PRECACHE_URLS = [
@@ -267,18 +283,24 @@ self.addEventListener('sync', (event) => {
     event.waitUntil(syncTransactions());
   }
   
-  if (event.tag === 'sync-categories') {
-    event.waitUntil(syncCategories());
-  }
+  // ⚠️ NO MANEJAR sync-categories AQUÍ
+  // Las categorías se sincronizan desde syncService.js
 });
-
 // ============================
 // Sincronizar transacciones pendientes
 // ============================
 async function syncTransactions() {
+  // ⚠️ LOCK: Si ya hay una sincronización en progreso, salir
+  if (isSyncingTransactions) {
+    console.log('[SW] ⏸️  Ya hay una sincronización de transacciones en progreso, omitiendo...');
+    return;
+  }
+
+  isSyncingTransactions = true;
+
   try {
     console.log('[SW] 🔄 Sincronizando transacciones offline...');
-    // Asegurarse de que la instancia Dexie esté abierta (puede cerrarse si otra conexión pidió upgrade)
+    
     try {
       if (!db.isOpen()) {
         console.log('[SW] Dexie cerrado, reabriendo la base de datos...');
@@ -289,7 +311,30 @@ async function syncTransactions() {
       throw openErr;
     }
     
-    // Obtener transacciones pendientes
+    if (!hasTable('pendingTransactions')) {
+      console.log('[SW] Tabla pendingTransactions no disponible, omitiendo sync de transacciones');
+      notifyClients({ type: 'SYNC_COMPLETE', synced: 0 });
+      return;
+    }
+
+    // ⚠️ VERIFICAR SI HAY CATEGORÍAS PENDIENTES
+    if (hasTable('pendingCategories')) {
+      const pendingCats = await db.table('pendingCategories')
+        .where('status')
+        .notEqual('synced')
+        .toArray();
+      
+      if (pendingCats && pendingCats.length > 0) {
+        console.log(`[SW] ⏸️  Hay ${pendingCats.length} categorías pendientes. Esperando sincronización manual...`);
+        notifyClients({ 
+          type: 'SYNC_PENDING_CATEGORIES', 
+          message: 'Sincroniza las categorías primero',
+          pendingCategories: pendingCats.length 
+        });
+        return;
+      }
+    }
+
     const pending = await db.table('pendingTransactions')
       .where('status')
       .notEqual('synced')
@@ -308,11 +353,19 @@ async function syncTransactions() {
 
     for (const tx of pending) {
       try {
-        // Marcar como sincronizando
-          await db.table('pendingTransactions').update(tx.localId, { status: 'syncing' });
+        await db.table('pendingTransactions').update(tx.localId, { status: 'syncing' });
+
+        // ⚠️ VALIDAR QUE LA CATEGORÍA YA ESTÉ SINCRONIZADA
+        const isTempId = typeof tx.categoryId === 'string' && /^cat_temp_/.test(tx.categoryId);
+        
+        if (isTempId) {
+          console.log(`[SW] ⏸️  Transacción ${tx.localId} tiene categoryId temporal, omitiendo...`);
+          await db.table('pendingTransactions').update(tx.localId, { status: 'pending' });
+          continue;
+        }
 
         let response;
-        const apiUrl = self.location.origin + '/api';
+        const apiUrl = API_BASE;
 
         switch (tx.action) {
           case 'CREATE':
@@ -331,6 +384,27 @@ async function syncTransactions() {
                 categoryId: tx.categoryId
               })
             });
+
+            if (response.ok) {
+              const body = await response.json();
+              const createdTx = body?.data;
+              
+              // ⚠️ ELIMINAR TRANSACCIÓN TEMPORAL DE db.transactions
+              if (hasTable('transactions')) {
+                try {
+                  await db.table('transactions').delete(tx.localId);
+                  console.log(`[SW] 🗑️ Transacción temporal eliminada de IndexedDB: ${tx.localId}`);
+                } catch (delErr) {
+                  console.warn('[SW] Warning eliminando transacción temporal:', delErr);
+                }
+              }
+
+              // ⚠️ GUARDAR TRANSACCIÓN REAL
+              if (hasTable('transactions') && createdTx) {
+                await db.table('transactions').put(createdTx);
+                console.log(`[SW] ✅ Transacción real guardada: ${createdTx.id}`);
+              }
+            }
             break;
 
           case 'UPDATE':
@@ -349,6 +423,15 @@ async function syncTransactions() {
                 categoryId: tx.categoryId
               })
             });
+
+            if (response.ok) {
+              const body = await response.json();
+              const updatedTx = body?.data;
+              
+              if (hasTable('transactions') && updatedTx) {
+                await db.table('transactions').put(updatedTx);
+              }
+            }
             break;
 
           case 'DELETE':
@@ -358,6 +441,10 @@ async function syncTransactions() {
                 'Authorization': `Bearer ${await getAuthToken()}`
               }
             });
+
+            if (response.ok && hasTable('transactions')) {
+              await db.table('transactions').delete(tx.transactionId);
+            }
             break;
 
           default:
@@ -365,31 +452,50 @@ async function syncTransactions() {
         }
 
         if (response.ok) {
-          // Marcar como sincronizada
-          await db.pendingTransactions.update(tx.localId, { status: 'synced' });
+          await db.table('pendingTransactions').update(tx.localId, { status: 'synced' });
           syncedCount++;
           console.log(`[SW] ✅ Transacción sincronizada: ${tx.localId}`);
         } else {
-          throw new Error(`HTTP ${response.status}`);
+          let errBody = '';
+          try {
+            const json = await response.clone().json();
+            errBody = json?.message || JSON.stringify(json);
+          } catch (e) {
+            try {
+              errBody = await response.clone().text();
+            } catch (_) {
+              errBody = '';
+            }
+          }
+          throw new Error(`HTTP ${response.status}: ${errBody}`);
         }
       } catch (error) {
         console.error(`[SW] ❌ Error sincronizando ${tx.localId}:`, error);
         
-        // Incrementar contador de reintentos
         const retries = (tx.retries || 0) + 1;
-              await db.table('pendingTransactions').update(tx.localId, {
-                status: 'error',
-                retries,
-                error: error.message
-              });
+        await db.table('pendingTransactions').update(tx.localId, {
+          status: 'error',
+          retries,
+          error: error.message
+        });
         
         errorCount++;
       }
     }
 
+    // ⚠️ LIMPIAR pendingTransactions
+    try {
+      if (hasTable('pendingTransactions')) {
+        const synced = await db.table('pendingTransactions').where('status').equals('synced').toArray();
+        await db.table('pendingTransactions').bulkDelete(synced.map(t => t.localId));
+        console.log(`[SW] 🧹 ${synced.length} transacciones sincronizadas limpiadas`);
+      }
+    } catch (cleanErr) {
+      console.warn('[SW] Error limpiando pendingTransactions:', cleanErr);
+    }
+
     console.log(`[SW] ✅ Sincronización completada: ${syncedCount} exitosas, ${errorCount} errores`);
 
-    // Notificar a los clientes
     notifyClients({
       type: 'SYNC_COMPLETE',
       synced: syncedCount,
@@ -399,110 +505,13 @@ async function syncTransactions() {
   } catch (error) {
     console.error('[SW] ❌ Error general en sincronización:', error);
     notifyClients({ type: 'SYNC_ERROR', error: error.message });
+  } finally {
+    // ⚠️ LIBERAR LOCK
+    isSyncingTransactions = false;
   }
 }
 
-  // ============================
-  // Sincronizar categorías pendientes
-  // ============================
-  async function syncCategories() {
-    try {
-      console.log('[SW] 🔄 Sincronizando categorías offline...');
-
-      try {
-        if (!db.isOpen()) {
-          console.log('[SW] Dexie cerrado, reabriendo la base de datos...');
-          await db.open();
-        }
-      } catch (openErr) {
-        console.error('[SW] Error reabriendo IndexedDB:', openErr);
-        throw openErr;
-      }
-
-      const pending = await db.table('pendingCategories')
-        .where('status')
-        .notEqual('synced')
-        .toArray();
-
-      if (!pending || pending.length === 0) {
-        console.log('[SW] ✅ No hay categorías pendientes');
-        notifyClients({ type: 'SYNC_COMPLETE_CATEGORIES', synced: 0 });
-        return;
-      }
-
-      console.log(`[SW] 📤 Sincronizando ${pending.length} categorías...`);
-
-      let syncedCount = 0;
-      let errorCount = 0;
-
-      const apiUrl = self.location.origin + '/api';
-
-      for (const pc of pending) {
-        try {
-          await db.table('pendingCategories').update(pc.localId, { status: 'syncing' });
-
-          const response = await fetch(`${apiUrl}/categories`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${await getAuthToken()}`
-            },
-            body: JSON.stringify({ name: pc.name, color: pc.color, icon: pc.icon })
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const body = await response.json();
-          const created = body?.data;
-
-          if (created) {
-            await db.table('categories').put(created);
-
-            // Reconciliar transacciones locales que usen la categoría temporal
-            try {
-              const txs = await db.table('transactions').where('categoryId').equals(pc.localId).toArray();
-              for (const t of txs) {
-                await db.table('transactions').update(t.id, { categoryId: created.id });
-              }
-
-              const pendingTxs = await db.table('pendingTransactions').where('categoryId').equals(pc.localId).toArray();
-              for (const pt of pendingTxs) {
-                await db.table('pendingTransactions').update(pt.localId, { categoryId: created.id });
-              }
-            } catch (mapErr) {
-              console.warn('[SW] Warning reconciling txs to new category:', mapErr);
-            }
-
-            await db.table('pendingCategories').update(pc.localId, { status: 'synced', serverId: created.id });
-            syncedCount++;
-          } else {
-            throw new Error('No se recibió categoría creada del servidor');
-          }
-        } catch (error) {
-          console.error(`[SW] ❌ Error sincronizando categoría ${pc.localId}:`, error);
-          const retries = (pc.retries || 0) + 1;
-          await db.pendingCategories.update(pc.localId, { status: 'error', retries, error: error.message });
-          errorCount++;
-        }
-      }
-
-      // Limpiar categorías sincronizadas
-      try {
-      const synced = await db.table('pendingCategories').where('status').equals('synced').toArray();
-      await db.table('pendingCategories').bulkDelete(synced.map(c => c.localId));
-    } catch (cleanErr) {
-      console.warn('[SW] Error limpiando pendingCategories:', cleanErr);
-    }
-
-      console.log(`[SW] ✅ Sincronización categorías completada: ${syncedCount} exitosas, ${errorCount} errores`);
-      notifyClients({ type: 'SYNC_COMPLETE_CATEGORIES', synced: syncedCount, errors: errorCount });
-    } catch (error) {
-      console.error('[SW] ❌ Error en syncCategories:', error);
-      notifyClients({ type: 'SYNC_ERROR_CATEGORIES', error: error.message });
-    }
-  }
+ 
 
 // ============================
 // Obtener token de autenticación
@@ -511,8 +520,13 @@ async function getAuthToken() {
   try {
     // El token se guarda en localStorage, que no está accesible desde SW
     // Alternativa: usar IndexedDB para guardar el token
-      const tokenSetting = await db.table('settings').get('authToken');
-    return tokenSetting?.value || '';
+      if (hasTable('settings')) {
+        const tokenSetting = await db.table('settings').get('authToken');
+        return tokenSetting?.value || pendingAuthToken || '';
+      }
+
+      // Si la tabla no existe aún en este contexto SW, usar token pendiente en memoria
+      return pendingAuthToken || '';
   } catch (error) {
     console.error('[SW] Error obteniendo token:', error);
     return '';
@@ -618,9 +632,16 @@ self.addEventListener('message', (event) => {
 
   // Guardar token de autenticación para uso en sincronización
   if (event.data && event.data.type === 'SAVE_AUTH_TOKEN') {
+    // Try to persist in IndexedDB; if table missing, keep in memory until available
+    pendingAuthToken = event.data.token || pendingAuthToken;
+
+    if (hasTable('settings')) {
       db.table('settings').put({ key: 'authToken', value: event.data.token })
-      .then(() => console.log('[SW] Token guardado'))
-      .catch((err) => console.error('[SW] Error guardando token:', err));
+        .then(() => console.log('[SW] Token guardado'))
+        .catch((err) => console.error('[SW] Error guardando token:', err));
+    } else {
+      console.log('[SW] Tabla settings no disponible, token guardado en memoria');
+    }
   }
 });
 

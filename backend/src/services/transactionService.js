@@ -3,12 +3,35 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Helpers para validar IDs y detectar IDs temporales generados por el cliente
+const isValidMongoId = (id) => {
+  return typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
+};
+
+const isTempId = (id) => {
+  return typeof id === 'string' && /^(?:cat_temp_|temp_)/.test(id);
+};
+
 /**
  * Crear una nueva transacción
  */
 export const createTransaction = async (userId, transactionData) => {
   try {
     const { title, type, amount, date, description, categoryId } = transactionData;
+
+    // ⚠️ VALIDAR QUE NO SEA UN ID TEMPORAL
+    if (categoryId && isTempId(categoryId)) {
+      const err = new Error('No se puede crear una transacción con una categoría temporal. Por favor sincroniza primero.');
+      err.status = 400;
+      throw err;
+    }
+
+    // Validar que sea un ObjectId válido si se proporcionó
+    if (categoryId && !isValidMongoId(categoryId)) {
+      const err = new Error('El ID de categoría no es válido');
+      err.status = 400;
+      throw err;
+    }
 
     // Validar que la categoría existe y pertenece al usuario
     const category = await prisma.category.findFirst({
@@ -82,23 +105,55 @@ export const getUserTransactions = async (userId, filters = {}) => {
       if (endDate) where.date.lte = new Date(endDate);
     }
 
-    const transactions = await prisma.transaction.findMany({
-      where,
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-            isDefault: true,
+    let transactions;
+    try {
+      transactions = await prisma.transaction.findMany({
+        where,
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              icon: true,
+              isDefault: true,
+            },
           },
         },
-      },
-      orderBy: { date: 'desc' },
-      take: limit ? parseInt(limit) : undefined,
-      skip: offset ? parseInt(offset) : undefined,
-    });
+        orderBy: { date: 'desc' },
+        take: limit ? parseInt(limit) : undefined,
+        skip: offset ? parseInt(offset) : undefined,
+      });
+    } catch (prismaErr) {
+      // Handle cases where the relation fetch fails because the related
+      // Category document is missing (Prisma may throw an "Inconsistent query result" error).
+      // Fallback: fetch transactions without include, then load categories separately
+      console.warn('Prisma include(category) failed, falling back to manual join:', prismaErr.message);
+
+      transactions = await prisma.transaction.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        take: limit ? parseInt(limit) : undefined,
+        skip: offset ? parseInt(offset) : undefined,
+      });
+
+      // Collect categoryIds and fetch categories
+      const categoryIds = [...new Set(transactions.map((t) => t.categoryId).filter(Boolean))];
+      const categories = categoryIds.length
+        ? await prisma.category.findMany({
+            where: { id: { in: categoryIds } },
+            select: { id: true, name: true, color: true, icon: true, isDefault: true },
+          })
+        : [];
+
+      const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+      // Attach category (or null) to each transaction to match expected shape
+      transactions = transactions.map((t) => ({
+        ...t,
+        category: categoryMap[t.categoryId] || null,
+      }));
+    }
 
     const total = await prisma.transaction.count({ where });
 
@@ -116,23 +171,45 @@ export const getUserTransactions = async (userId, filters = {}) => {
  */
 export const getTransactionById = async (userId, transactionId) => {
   try {
-    const transaction = await prisma.transaction.findFirst({
-      where: {
-        id: transactionId,
-        userId,
-      },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-            isDefault: true,
+    let transaction;
+    try {
+      transaction = await prisma.transaction.findFirst({
+        where: {
+          id: transactionId,
+          userId,
+        },
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              icon: true,
+              isDefault: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (prismaErr) {
+      console.warn('Prisma include(category) failed for getTransactionById, falling back:', prismaErr.message);
+      transaction = await prisma.transaction.findFirst({
+        where: {
+          id: transactionId,
+          userId,
+        },
+      });
+
+      if (transaction) {
+        const cat = transaction.categoryId
+          ? await prisma.category.findUnique({
+              where: { id: transaction.categoryId },
+              select: { id: true, name: true, color: true, icon: true, isDefault: true },
+            })
+          : null;
+
+        transaction = { ...transaction, category: cat || null };
+      }
+    }
 
     if (!transaction) {
       const err = new Error('Transacción no encontrada');

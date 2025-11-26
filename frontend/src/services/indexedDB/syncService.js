@@ -373,6 +373,11 @@ class SyncService {
   /**
    * Sincronizar categorías pendientes
    */
+  // frontend/src/services/syncService.js
+
+/**
+ * Sincronizar categorías pendientes
+ */
   async syncPendingCategories(userId) {
     if (this.isSyncing) {
       console.log('⏳ Sincronización ya en progreso...');
@@ -406,63 +411,120 @@ class SyncService {
         try {
           await db.updatePendingCategoryStatus(pc.localId, 'syncing');
 
-          const response = await api.post('/categories', {
-            name: pc.name,
-            color: pc.color,
-            icon: pc.icon
-          });
-
-          if (!response.ok && response.status >= 400) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-
-          const created = response.data.data;
-
-          // Guardar categoría real en IndexedDB
-          await db.categories.put(created);
-
-          // Reemplazar en transacciones locales: cualquier tx que referencie la localId
+          // Intentar crear categoría en servidor
+          let created = null;
           try {
-            const txs = await db.transactions.where('categoryId').equals(pc.localId).toArray();
-            for (const t of txs) {
-              await db.transactions.update(t.id, { categoryId: created.id });
+            const response = await api.post('/categories', {
+              name: pc.name,
+              color: pc.color,
+              icon: pc.icon
+            });
+            created = response.data.data;
+          } catch (err) {
+            const status = err?.response?.status;
+            if (status === 409) {
+              console.warn('Categoría ya existe (409). Buscando categoría existente...');
+              try {
+                const listResp = await api.get('/categories');
+                const list = listResp.data?.data || [];
+                const found = list.find(c => c.name && c.name.toLowerCase() === pc.name.toLowerCase());
+                if (found) {
+                  created = found;
+                } else {
+                  throw err;
+                }
+              } catch (listErr) {
+                console.error('Error fetching categories to resolve 409:', listErr);
+                throw err;
+              }
+            } else {
+              throw err;
             }
-
-            // También actualizar pendientes de transacciones que referencien la categoría temporal
-            const pendingTxs = await db.pendingTransactions.where('categoryId').equals(pc.localId).toArray();
-            for (const pt of pendingTxs) {
-              await db.pendingTransactions.update(pt.localId, { categoryId: created.id });
-            }
-          } catch (mapErr) {
-            console.warn('Warning: no se pudieron reconciliar transacciones con la nueva categoría:', mapErr);
           }
 
-          // Marcar como sincronizada
-          await db.updatePendingCategoryStatus(pc.localId, 'synced', created.id);
+          if (created) {
+            // ⚠️ PASO 1: GUARDAR LA CATEGORÍA REAL
+            await db.categories.put(created);
+            console.log(`✅ Categoría guardada con ID real: ${created.id}`);
 
-          syncedCount++;
+            // ⚠️ PASO 2: ELIMINAR LA CATEGORÍA TEMPORAL DE db.categories
+            try {
+              await db.categories.delete(pc.localId);
+              console.log(`🗑️ Categoría temporal eliminada de IndexedDB: ${pc.localId}`);
+            } catch (delErr) {
+              console.warn('Warning: no se pudo eliminar categoría temporal:', delErr);
+            }
+
+            // ⚠️ PASO 3: ACTUALIZAR TRANSACCIONES QUE USEN EL ID TEMPORAL
+            try {
+              // Actualizar transacciones sincronizadas
+              const txs = await db.transactions.where('categoryId').equals(pc.localId).toArray();
+              for (const t of txs) {
+                await db.transactions.update(t.id, { categoryId: created.id });
+                console.log(`🔄 Transacción ${t.id} actualizada con nueva categoría ${created.id}`);
+              }
+
+              // Actualizar transacciones pendientes
+              const pendingTxs = await db.pendingTransactions.where('categoryId').equals(pc.localId).toArray();
+              for (const pt of pendingTxs) {
+                await db.pendingTransactions.update(pt.localId, { categoryId: created.id });
+                console.log(`🔄 Transacción pendiente ${pt.localId} actualizada con nueva categoría ${created.id}`);
+              }
+            } catch (mapErr) {
+              console.warn('Warning: no se pudieron reconciliar transacciones con la nueva categoría:', mapErr);
+            }
+
+            // ⚠️ PASO 4: MARCAR COMO SINCRONIZADA
+            await db.updatePendingCategoryStatus(pc.localId, 'synced', created.id);
+
+            syncedCount++;
+          } else {
+            throw new Error('No se recibió categoría creada del servidor');
+          }
         } catch (error) {
           console.error(`❌ Error sincronizando categoría ${pc.localId}:`, error);
+          const retries = (pc.retries || 0) + 1;
           await db.updatePendingCategoryStatus(pc.localId, 'error', null, error.message);
           errorCount++;
         }
       }
 
-      // Limpiar
-      await db.cleanSyncedCategories();
+      // ⚠️ PASO 5: LIMPIAR pendingCategories
+      try {
+        const synced = await db.pendingCategories.where('status').equals('synced').toArray();
+        await db.pendingCategories.bulkDelete(synced.map(c => c.localId));
+        console.log(`🧹 ${synced.length} categorías sincronizadas limpiadas de pendingCategories`);
+      } catch (cleanErr) {
+        console.warn('Error limpiando pendingCategories:', cleanErr);
+      }
 
-      console.log(`✅ Sincronización categorias completada: ${syncedCount} exitosas, ${errorCount} errores`);
-
+      console.log(`✅ Sincronización categorías completada: ${syncedCount} exitosas, ${errorCount} errores`);
       this.notifyListeners({ type: 'SYNC_COMPLETED_CATEGORIES', synced: syncedCount, errors: errorCount });
+
+      // ⚠️ NOTIFICAR AL SERVICE WORKER que puede sincronizar transacciones
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && syncedCount > 0) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          if (registration && registration.sync) {
+            await registration.sync.register('sync-transactions');
+            console.log('✅ Solicitando sincronización de transacciones al Service Worker');
+          } else {
+            console.warn('Background Sync no está disponible en Service Worker registration');
+          }
+        } catch (err) {
+          console.warn('No se pudo registrar sync de transacciones:', err);
+        }
+      }
 
       return { success: true, synced: syncedCount, errors: errorCount };
     } catch (error) {
-      console.error('❌ Error sincronizando categorías:', error);
+      console.error('❌ Error en syncCategories:', error);
       this.notifyListeners({ type: 'SYNC_ERROR_CATEGORIES', error });
       return { success: false, error: error.message };
     } finally {
       this.isSyncing = false;
     }
+    
   }
 
   // ============================
@@ -505,7 +567,7 @@ class SyncService {
         try {
           await db.updatePendingTransactionStatus(pendingTx.localId, 'syncing');
 
-          // If the transaction references a temporary/local category id, try to resolve it
+          // Verificar si la categoría es temporal
           let categoryIdToUse = pendingTx.categoryId;
           if (categoryIdToUse && !isValidMongoId(categoryIdToUse) && isTempId(categoryIdToUse)) {
             try {
@@ -513,9 +575,7 @@ class SyncService {
               if (pendingCat && pendingCat.serverId) {
                 categoryIdToUse = pendingCat.serverId;
               } else {
-                // Category not synced yet — postpone this transaction
                 console.log(`⏳ Postponiendo transacción ${pendingTx.localId} hasta que la categoría ${categoryIdToUse} se sincronice`);
-                // Reset status back to pending (was set to syncing)
                 await db.updatePendingTransactionStatus(pendingTx.localId, 'pending');
                 continue;
               }
@@ -539,9 +599,17 @@ class SyncService {
                 categoryId: categoryIdToUse
               });
 
-              // Reemplazar transacción temporal con la del servidor
-              await db.deleteTransaction(pendingTx.localId);
+              // ⚠️ ELIMINAR TRANSACCIÓN TEMPORAL DE db.transactions
+              try {
+                await db.transactions.delete(pendingTx.localId);
+                console.log(`🗑️ Transacción temporal eliminada: ${pendingTx.localId}`);
+              } catch (delErr) {
+                console.warn('Warning eliminando transacción temporal:', delErr);
+              }
+
+              // ⚠️ GUARDAR TRANSACCIÓN REAL
               await db.transactions.put(response.data.data);
+              console.log(`✅ Transacción real guardada: ${response.data.data.id}`);
               break;
 
             case 'UPDATE':
@@ -566,7 +634,6 @@ class SyncService {
               throw new Error(`Acción desconocida: ${pendingTx.action}`);
           }
 
-          // Marcar como sincronizada
           await db.updatePendingTransactionStatus(
             pendingTx.localId,
             'synced',
@@ -589,7 +656,7 @@ class SyncService {
         }
       }
 
-      // Limpiar transacciones sincronizadas
+      // ⚠️ LIMPIAR pendingTransactions
       await db.cleanSyncedTransactions();
 
       console.log(`✅ Sincronización completada: ${syncedCount} exitosas, ${errorCount} errores`);

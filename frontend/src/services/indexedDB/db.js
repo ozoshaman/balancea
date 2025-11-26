@@ -9,13 +9,14 @@ class BalanceaDB extends Dexie {
     super('BalanceaDB');
     
     // Definir el esquema de la base de datos
-    // Versión 2: agregar pendingCategories para sincronización de categorías offline
-    this.version(2).stores({
+    // Versión 3: añadir índice categoryId en pendingTransactions
+    this.version(3).stores({
       // Transacciones sincronizadas (copia local de datos del servidor)
       transactions: 'id, userId, type, date, categoryId, amount, *tags',
       
       // Cola de transacciones pendientes de sincronizar
-      pendingTransactions: '++localId, userId, type, date, status, retries',
+      // Añadir categoryId al índice para consultas/where sobre categoryId
+      pendingTransactions: '++localId, userId, type, date, status, retries, categoryId',
       
       // Cola de categorías pendientes de sincronizar (creadas offline)
       pendingCategories: '++localId, userId, name, status, retries',
