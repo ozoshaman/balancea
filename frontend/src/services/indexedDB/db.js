@@ -235,7 +235,7 @@ class BalanceaDB extends Dexie {
   // Métodos de Categorías
   // ============================
 
-  async saveCategories(categories) {
+  async saveCategories(categories, userId = null) {
     try {
       if (typeof indexedDB === 'undefined') {
         console.error('IndexedDB no está disponible en este entorno. Omitiendo guardado de categorías.');
@@ -247,10 +247,18 @@ class BalanceaDB extends Dexie {
         return false;
       }
 
-      await this.categories.bulkPut(categories);
-      console.log('✅ Categorías guardadas:', categories.length);
+      // Asegurar que cada categoría tenga userId para que las consultas por user funcionen
+      const normalized = categories.map(cat => ({
+        ...cat,
+        userId: cat.userId || userId || null
+      }));
+
+      await this.categories.bulkPut(normalized);
+      console.log('✅ Categorías guardadas:', normalized.length);
+      return true;
     } catch (error) {
       console.error('❌ Error guardando categorías:', error);
+      return false;
     }
   }
 

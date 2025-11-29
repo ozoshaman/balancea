@@ -39,7 +39,7 @@ export const getTransactions = async (req, res) => {
  * Obtener una transacción por ID
  */
 export const getTransactionById = async (req, res) => {
-  try {
+  try { 
     const userId = req.user.id;
     const { id } = req.params;
     const transaction = await transactionService.getTransactionById(userId, id);
@@ -98,6 +98,21 @@ export const getStats = async (req, res) => {
     return successResponse(res, stats, 'Estadísticas obtenidas exitosamente');
   } catch (error) {
     console.error('Error en getStats:', error);
+    const status = error.status || 500;
+    return errorResponse(res, error.message, status);
+  }
+};
+
+export const getBalance = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const filters = req.query;
+
+    const balance = await transactionService.getUserBalance(userId, filters);
+
+    return successResponse(res, balance, 'Balance obtenido exitosamente');
+  } catch (error) {
+    console.error('Error en getBalance:', error);
     const status = error.status || 500;
     return errorResponse(res, error.message, status);
   }

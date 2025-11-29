@@ -24,5 +24,6 @@ router.get('/', getTransactionsValidation, validate, transactionController.getTr
 router.get('/:id', transactionIdValidation, validate, transactionController.getTransactionById);
 router.put('/:id', updateTransactionValidation, validate, transactionController.updateTransaction);
 router.delete('/:id', transactionIdValidation, validate, transactionController.deleteTransaction);
+router.get('/balance', getTransactionsValidation, validate, transactionController.getBalance);
 
 export default router;
