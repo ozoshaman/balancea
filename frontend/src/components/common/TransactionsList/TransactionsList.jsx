@@ -1,5 +1,5 @@
 // src/components/TransactionList.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import useTransactions from '../../../hooks/useTransactions';
 import db from '../../../services/db';
@@ -45,12 +45,10 @@ function TransactionList() {
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [categories, setCategories] = useState([]);
-  const [formError, setFormError] = useState(null);
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
-  const [newCatColor, setNewCatColor] = useState('#3B82F6');
-  const [newCatIcon, setNewCatIcon] = useState('📁');
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [formError, setFormError] = useState(null);
 
   const openForm = () => setOpen(true);
   const closeForm = () => {
@@ -67,15 +65,11 @@ function TransactionList() {
   const openAddCategory = () => {
     setAddCatOpen(true);
     setNewCatName('');
-    setNewCatColor('#3B82F6');
-    setNewCatIcon('📁');
   };
 
   const closeAddCategory = () => {
     setAddCatOpen(false);
     setNewCatName('');
-    setNewCatColor('#3B82F6');
-    setNewCatIcon('📁');
     setCreatingCategory(false);
   };
 
@@ -85,16 +79,13 @@ function TransactionList() {
       if (!newCatName || newCatName.trim().length < 2) {
         throw new Error('El nombre de la categoría debe tener al menos 2 caracteres');
       }
-      // Crear (el servicio maneja online/offline y encolado)
-      const result = await syncService.createCategory({
-        name: newCatName.trim(),
-        color: newCatColor,
-        icon: newCatIcon
-      }, user?.id);
 
+      // Crear categoría (syncService maneja online/offline)
+      const result = await syncService.createCategory({ name: newCatName.trim() }, user?.id);
       const created = result?.data;
+
       if (created) {
-        // Si fue offline, el ID puede ser temporal; igualmente guardamos y recargamos
+        // Guardar/actualizar cache local y recargar lista
         await db.saveCategories([created]);
         await loadCategories();
         setCategoryId(created.id);
@@ -108,7 +99,7 @@ function TransactionList() {
   };
 
   // Cargar categorías (IndexedDB primero, luego API si está online y no hay categorías locales)
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
       if (!user?.id) return;
       let local = await db.getUserCategories(user.id);
@@ -122,8 +113,8 @@ function TransactionList() {
         const resp = await api.get('/categories');
         const serverCats = resp?.data?.data || [];
         if (Array.isArray(serverCats) && serverCats.length > 0) {
-          // Guardar en IndexedDB para uso offline
-          await db.saveCategories(serverCats);
+          // Guardar en IndexedDB para uso offline (asegurar userId)
+          await db.saveCategories(serverCats, user?.id);
           setCategories(serverCats);
           setCategoryId(serverCats[0].id);
           return;
@@ -138,12 +129,34 @@ function TransactionList() {
       setCategories([]);
       setCategoryId('');
     }
-  };
+  }, [user]);
 
+  // Cargar categorías inicialmente y cuando cambie user/isOnline
   useEffect(() => {
     loadCategories();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isOnline]);
+  }, [loadCategories]);
+
+  // Recargar categorías al cambiar el estado de conexión (online/offline)
+  useEffect(() => {
+    const onOffline = () => {
+      console.log('📡 Offline: recargando categorías locales');
+      loadCategories();
+    };
+
+    const onOnline = () => {
+      console.log('🌐 Online: recargando categorías (servidor)');
+      loadCategories();
+    };
+
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [loadCategories]);
 
   // Computed helpers
   const customCategoriesCount = categories.filter(c => !c.isDefault).length;
@@ -309,20 +322,6 @@ function TransactionList() {
             label="Nombre de la categoría"
             value={newCatName}
             onChange={(e) => setNewCatName(e.target.value)}
-            fullWidth
-            margin="normal"
-          />
-          <TextField
-            label="Color (hex)"
-            value={newCatColor}
-            onChange={(e) => setNewCatColor(e.target.value)}
-            fullWidth
-            margin="normal"
-          />
-          <TextField
-            label="Icono"
-            value={newCatIcon}
-            onChange={(e) => setNewCatIcon(e.target.value)}
             fullWidth
             margin="normal"
           />

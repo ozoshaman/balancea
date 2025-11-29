@@ -278,7 +278,7 @@ export const getUserStats = async (userId, filters = {}) => {
 
     const totalExpense = await prisma.transaction.aggregate({
       where: { ...where, type: 'EXPENSE' },
-      _sum: { amount: true },
+      _sum: { amount: true }, 
     });
 
     const income = totalIncome._sum.amount || 0;
@@ -316,6 +316,50 @@ export const getUserStats = async (userId, filters = {}) => {
   } catch (error) {
     console.error('Error en getUserStats:', error);
     const err = new Error('Error al obtener las estadísticas');
+    err.status = 500;
+    throw err;
+  }
+};
+
+/**
+ * Obtener balance general del usuario
+ * - totalIncome
+ * - totalExpense
+ * - balance (income - expense)
+ */
+export const getUserBalance = async (userId, filters = {}) => {
+  try {
+    const { startDate, endDate } = filters;
+
+    const where = { userId };
+
+    if (startDate || endDate) {
+      where.date = {};
+      if (startDate) where.date.gte = new Date(startDate);
+      if (endDate) where.date.lte = new Date(endDate);
+    }
+
+    const totalIncome = await prisma.transaction.aggregate({
+      where: { ...where, type: 'INCOME' },
+      _sum: { amount: true },
+    });
+
+    const totalExpense = await prisma.transaction.aggregate({
+      where: { ...where, type: 'EXPENSE' },
+      _sum: { amount: true },
+    });
+
+    const income = totalIncome._sum.amount || 0;
+    const expense = totalExpense._sum.amount || 0;
+
+    return {
+      totalIncome: income,
+      totalExpense: expense,
+      balance: income - expense,
+    };
+  } catch (error) {
+    console.error('Error en getUserBalance:', error);
+    const err = new Error('Error al obtener el balance del usuario');
     err.status = 500;
     throw err;
   }

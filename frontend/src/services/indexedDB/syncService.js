@@ -75,7 +75,7 @@ class SyncService {
 
     // Validar antes de intentar crear
     try {
-      validate(transactionData);
+      validate(transactionData); 
     } catch (validationError) {
       console.error('Validación cliente fallida:', validationError);
       // Si estamos online devolvemos error al caller para que muestre mensaje

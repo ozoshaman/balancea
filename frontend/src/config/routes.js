@@ -7,6 +7,7 @@ import ForgotPassword from '../pages/Auth/ForgotPassword';
 import VerifyResetCode from '../pages/Auth/VerifyResetCode';
 import ResetPassword from '../pages/Auth/ResetPassword';
 import Dashboard from '../pages/Dashboard/Dashboard';
+import TransactionsPage from '../pages/Transactions/TransactionsPage';
 import ProtectedRoute from '../components/common/ProtectedRoute';
 
 export const router = createBrowserRouter([
@@ -43,6 +44,14 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <Dashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/transactions',
+    element: (
+      <ProtectedRoute>
+        <TransactionsPage />
       </ProtectedRoute>
     ),
   },
