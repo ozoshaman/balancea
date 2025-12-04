@@ -10,7 +10,7 @@ import {
   Typography,
   Avatar,
 } from '@mui/material';
-import { AccountCircle, Person, Logout } from '@mui/icons-material';
+import { AccountCircle, Logout } from '@mui/icons-material';
 import { useAuth } from '../../../hooks/useAuth';
 
 const ProfileMenu = () => {
@@ -25,11 +25,6 @@ const ProfileMenu = () => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
-  };
-
-  const handleProfile = () => {
-    navigate('/profile');
-    handleMenuClose();
   };
 
   const handleLogout = () => {
@@ -122,20 +117,6 @@ const ProfileMenu = () => {
         </Box>
 
         <Divider />
-
-        {/* Opciones del menú */}
-        <MenuItem
-          onClick={handleProfile}
-          sx={{
-            py: 1.5,
-            '&:hover': {
-              backgroundColor: 'rgba(114, 24, 168, 0.08)',
-            },
-          }}
-        >
-          <Person sx={{ mr: 1.5, color: '#7218a8', fontSize: 20 }} />
-          <Typography variant="body2">Perfil</Typography>
-        </MenuItem>
 
         <Divider />
 

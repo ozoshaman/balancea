@@ -9,8 +9,8 @@ class BalanceaDB extends Dexie {
     super('BalanceaDB');
     
     // Definir el esquema de la base de datos
-    // Versión 3: añadir índice categoryId en pendingTransactions
-    this.version(3).stores({
+    // Versión 4: añadir índice categoryId en pendingTransactions y pendingPremiums
+    this.version(4).stores({
       // Transacciones sincronizadas (copia local de datos del servidor)
       transactions: 'id, userId, type, date, categoryId, amount, *tags',
       
@@ -20,6 +20,9 @@ class BalanceaDB extends Dexie {
       
       // Cola de categorías pendientes de sincronizar (creadas offline)
       pendingCategories: '++localId, userId, name, status, retries',
+
+      // Cola de upgrades a PREMIUM pendientes
+      pendingPremiums: '++localId, userId, status, createdAt',
       
       // Categorías (cache)
       categories: 'id, userId, name',
@@ -36,6 +39,7 @@ class BalanceaDB extends Dexie {
     this.pendingTransactions = this.table('pendingTransactions');
     this.categories = this.table('categories');
     this.pendingCategories = this.table('pendingCategories');
+    this.pendingPremiums = this.table('pendingPremiums');
     this.settings = this.table('settings');
     this.stats = this.table('stats');
   }
@@ -350,6 +354,56 @@ class BalanceaDB extends Dexie {
       console.log(`✅ ${synced.length} categorías sincronizadas limpiadas`);
     } catch (error) {
       console.error('❌ Error limpiando categorías sincronizadas:', error);
+    }
+  }
+
+  // ============================
+  // Métodos de Upgrades (Premium)
+  // ============================
+
+  async addPendingPremium(premium) {
+    try {
+      const pending = {
+        ...premium,
+        status: 'pending',
+        createdAt: premium.createdAt || new Date().toISOString(),
+      };
+
+      const localId = await this.pendingPremiums.add(pending);
+      console.log('✅ Upgrade a Premium encolado:', localId);
+      return { ...pending, localId };
+    } catch (error) {
+      console.error('❌ Error agregando pendingPremium:', error);
+      throw error;
+    }
+  }
+
+  async getPendingPremiums(userId) {
+    try {
+      if (!userId) return await this.pendingPremiums.toArray();
+      return await this.pendingPremiums.where('userId').equals(userId).and(p => p.status !== 'synced').toArray();
+    } catch (error) {
+      console.error('❌ Error obteniendo pendingPremiums:', error);
+      return [];
+    }
+  }
+
+  async removePendingPremium(localId) {
+    try {
+      await this.pendingPremiums.delete(localId);
+      console.log('✅ pendingPremium eliminado:', localId);
+    } catch (error) {
+      console.error('❌ Error eliminando pendingPremium:', error);
+    }
+  }
+
+  async cleanSyncedPremiums() {
+    try {
+      const synced = await this.pendingPremiums.where('status').equals('synced').toArray();
+      await this.pendingPremiums.bulkDelete(synced.map(p => p.localId));
+      console.log(`✅ ${synced.length} upgrades sincronizados limpiados`);
+    } catch (error) {
+      console.error('❌ Error limpiando pendingPremiums:', error);
     }
   }
 

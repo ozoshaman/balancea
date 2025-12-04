@@ -5,6 +5,7 @@ import verificationRoutes from './verificationRoutes.js';
 import transactionRoutes from './transactionRoutes.js';
 import categoryRoutes from './categoryRoutes.js';
 import recurringTransactionRoutes from './recurringTransactionRoutes.js';
+import userRoutes from './userRoutes.js';
 
 const router = express.Router();
 
@@ -23,5 +24,6 @@ router.use('/verification', verificationRoutes);
 router.use('/transactions', transactionRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/recurring-transactions', recurringTransactionRoutes);
+router.use('/users', userRoutes);
 
 export default router;

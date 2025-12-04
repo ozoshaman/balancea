@@ -6,14 +6,22 @@ import {
   Typography,
   Box,
   Button,
+  Tooltip,
 } from '@mui/material';
+import { Star as CrownIcon } from '@mui/icons-material';
 import ProfileMenu from '../ProfileMenu/ProfileMenu.jsx';
+import { useState } from 'react';
+import PremiumModal from '../../common/PremiumModal/PremiumModal.jsx';
+import { useSelector } from 'react-redux';
 
 const Navigation = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [openPremium, setOpenPremium] = useState(false);
+  const { user } = useSelector(state => state.auth);
 
   const isActive = (path) => location.pathname === path;
+  const isPremium = user?.role === 'PREMIUM';
 
   return (
     <AppBar
@@ -94,11 +102,28 @@ const Navigation = () => {
           >
             Transacciones
           </Button>
+          {isPremium ? (
+            <Tooltip title="Usuario Premium">
+              <CrownIcon sx={{ color: '#FFD700', fontSize: '28px', cursor: 'pointer' }} />
+            </Tooltip>
+          ) : (
+            <Button
+              onClick={() => setOpenPremium(true)}
+              sx={{
+                color: 'rgba(255, 255, 255, 0.9)',
+                textTransform: 'none',
+                fontSize: '1rem',
+              }}
+            >
+              Get Premium
+            </Button>
+          )}
         </Box>
 
         {/* Profile Menu */}
         <ProfileMenu />
       </Toolbar>
+      <PremiumModal open={openPremium} onClose={() => setOpenPremium(false)} />
     </AppBar>
   );
 };

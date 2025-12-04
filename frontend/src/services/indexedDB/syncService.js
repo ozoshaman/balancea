@@ -4,7 +4,11 @@ import api from '../../config/axiosConfig';
 
 // Helpers: validar ObjectId Mongo y IDs temporales locales
 const isValidMongoId = (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id);
-const isTempId = (id) => typeof id === 'string' && /^(?:cat_temp_|temp_)/.test(id);
+const isTempId = (id) => {
+  if (typeof id === 'number') return true; // IDs generados por Dexie (++localId)
+  if (typeof id === 'string') return /^(?:cat[-_]|cat_temp_|temp_)/.test(id);
+  return false;
+};
 
 class SyncService {
   constructor() {
@@ -483,7 +487,6 @@ class SyncService {
           }
         } catch (error) {
           console.error(`❌ Error sincronizando categoría ${pc.localId}:`, error);
-          const retries = (pc.retries || 0) + 1;
           await db.updatePendingCategoryStatus(pc.localId, 'error', null, error.message);
           errorCount++;
         }
@@ -667,10 +670,72 @@ class SyncService {
         errors: errorCount
       });
 
+      // Intentar sincronizar upgrades a Premium pendientes
+      try {
+        await this.syncPendingPremiums(userId);
+      } catch (premiumErr) {
+        console.warn('Error sincronizando upgrades pendientes:', premiumErr);
+      }
+
       return { success: true, synced: syncedCount, errors: errorCount };
     } catch (error) {
       console.error('❌ Error en sincronización:', error);
       this.notifyListeners({ type: 'SYNC_ERROR', error });
+      return { success: false, error: error.message };
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  // ============================
+  // Sincronizar upgrades a PREMIUM
+  // ============================
+
+  async syncPendingPremiums(userId) {
+    if (this.isSyncing) {
+      console.log('⏳ Sincronización ya en progreso... (premium)');
+      return { success: false, message: 'Sync in progress' };
+    }
+
+    if (!navigator.onLine) {
+      console.log('📡 Sin conexión, no se puede sincronizar upgrades');
+      return { success: false, message: 'No internet connection' };
+    }
+
+    this.isSyncing = true;
+    this.notifyListeners({ type: 'SYNC_STARTED_PREMIUM' });
+
+    try {
+      const pending = await db.getPendingPremiums(userId);
+      if (!pending || pending.length === 0) {
+        this.isSyncing = false;
+        this.notifyListeners({ type: 'SYNC_COMPLETED_PREMIUM', synced: 0 });
+        return { success: true, synced: 0 };
+      }
+
+      let synced = 0;
+      for (const p of pending) {
+        try {
+          await db.pendingPremiums.update(p.localId, { status: 'syncing' });
+          const resp = await api.post('/users/upgrade', {});
+          const updatedUser = resp.data?.data;
+          if (updatedUser) {
+            // marcar como synced y eliminar
+            await db.pendingPremiums.update(p.localId, { status: 'synced' });
+            synced++;
+          }
+        } catch (err) {
+          console.error('Error sincronizando premium pending', err);
+          await db.pendingPremiums.update(p.localId, { status: 'error' });
+        }
+      }
+
+      await db.cleanSyncedPremiums();
+      this.notifyListeners({ type: 'SYNC_COMPLETED_PREMIUM', synced });
+      return { success: true, synced };
+    } catch (error) {
+      console.error('❌ Error en syncPendingPremiums:', error);
+      this.notifyListeners({ type: 'SYNC_ERROR_PREMIUM', error });
       return { success: false, error: error.message };
     } finally {
       this.isSyncing = false;
