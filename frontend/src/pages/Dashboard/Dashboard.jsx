@@ -13,7 +13,7 @@ import { useAuth } from "../../hooks/useAuth";
 const Dashboard = () => {
   const { user } = useAuth();
   const data = useDashboard(user?.id);
-  const { pendingCount, isOnline, syncing, syncTransactions, deleteTransaction } = useTransactions();
+  const { pendingCount, isOnline, syncing, syncTransactions } = useTransactions();
 
   // Loading simple
   if (data.loading) {
@@ -24,16 +24,7 @@ const Dashboard = () => {
     );
   }
 
-  const handleDeleteTransaction = async (transactionId) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta transacción?')) {
-      try {
-        await deleteTransaction(transactionId);
-      } catch (error) {
-        console.error('Error al eliminar transacción:', error);
-        alert('Error al eliminar la transacción');
-      }
-    }
-  };
+  
 
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
@@ -145,7 +136,6 @@ const Dashboard = () => {
             >
               <DashboardTransactions 
                 transactions={data.transactions} 
-                onDelete={handleDeleteTransaction}
                 transparent 
               />
             </Paper>

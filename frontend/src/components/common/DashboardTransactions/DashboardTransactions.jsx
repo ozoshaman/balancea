@@ -112,13 +112,16 @@ const DashboardTransactions = ({ transactions = [], onDelete, transparent = fals
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {recentTransactions.map((transaction) => {
+            {recentTransactions.map((transaction, idx) => {
               const txType = getTransactionType(transaction);
               const transactionId = normalizeId(transaction._id || transaction.id);
-              
+              // Generar una key única: preferir id del servidor, luego localId (pendiente),
+              // luego usar índice como fallback para evitar keys nulas/duplicadas.
+              const txKey = transactionId || transaction.localId || `tx-${idx}-${String(transaction.date || transaction.createdAt || '')}`;
+
               return (
                 <Box
-                  key={transactionId}
+                  key={txKey}
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
