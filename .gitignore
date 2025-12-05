@@ -9,7 +9,7 @@ build/
 dist/
 coverage/
 *.log
-
+backend/serviceAccountKey.json
 # Archivos del sistema
 .DS_Store
 Thumbs.db
