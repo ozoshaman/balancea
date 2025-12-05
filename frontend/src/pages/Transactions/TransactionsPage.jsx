@@ -711,20 +711,20 @@ const TransactionsPage = () => {
                         <Stack direction="row" spacing={1}>
                           <Tooltip title="Ejecutar ahora">
                             <span>
-                              <IconButton onClick={() => handleRunNowRecurring(r.id)} disabled={processingRecurringId === r.id}>
+                              <IconButton aria-label="Ejecutar ahora" onClick={() => handleRunNowRecurring(r.id)} disabled={processingRecurringId === r.id}>
                                 <PlayArrowIcon />
                               </IconButton>
                             </span>
                           </Tooltip>
 
                           <Tooltip title="Editar">
-                            <IconButton onClick={() => handleOpenEditRecurring(r)}>
+                            <IconButton aria-label="Editar regla recurrente" onClick={() => handleOpenEditRecurring(r)}>
                               <EditIcon />
                             </IconButton>
                           </Tooltip>
 
                           <Tooltip title="Eliminar">
-                            <IconButton onClick={() => handleDeleteRecurring(r.id)}>
+                            <IconButton aria-label="Eliminar regla recurrente" onClick={() => handleDeleteRecurring(r.id)}>
                               <DeleteIcon />
                             </IconButton>
                           </Tooltip>
@@ -862,8 +862,8 @@ const TransactionsPage = () => {
             sx={{
               textTransform: 'none',
               borderRadius: 2,
-              bgcolor: '#667eea',
-              '&:hover': { bgcolor: '#5568d3' },
+              bgcolor: '#3b4bb5',
+              '&:hover': { bgcolor: '#2f3f9b' },
             }}
           >
             {creating ? <CircularProgress size={18} /> : "Crear"}
@@ -914,8 +914,8 @@ const TransactionsPage = () => {
             sx={{
               textTransform: 'none',
               borderRadius: 2,
-              bgcolor: '#667eea',
-              '&:hover': { bgcolor: '#5568d3' },
+              bgcolor: '#3b4bb5',
+              '&:hover': { bgcolor: '#2f3f9b' },
             }}
           >
             {creatingCategory ? <CircularProgress size={18} /> : "Crear"}
@@ -963,8 +963,8 @@ const TransactionsPage = () => {
             sx={{
               textTransform: 'none',
               borderRadius: 2,
-              bgcolor: '#667eea',
-              '&:hover': { bgcolor: '#5568d3' },
+              bgcolor: '#3b4bb5',
+              '&:hover': { bgcolor: '#2f3f9b' },
             }}
           >
             {savingEditing ? <CircularProgress size={18} /> : 'Guardar'}

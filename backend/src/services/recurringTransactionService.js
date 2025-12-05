@@ -10,6 +10,7 @@ import {
   isAfter,
   isBefore,
   endOfDay,
+  startOfDay,
 } from 'date-fns';
 import * as notificationService from './notificationService.js';
 import sseService from './sseService.js';
@@ -280,37 +281,59 @@ export const processRecurringTransactions = async () => {
     for (const recurring of pending) {
       try {
         const txDate = recurring.nextRun || now;
-        const transaction = await prisma.transaction.create({ data: { title: recurring.title, type: recurring.type, amount: recurring.amount, date: txDate, description: recurring.description, categoryId: recurring.categoryId, userId: recurring.userId } });
+        // Prevención de duplicados: comprobar si ya existe una transacción similar
+        // para el mismo usuario en el mismo día (heurística). Si existe, omitimos
+        // la creación para evitar cargos duplicados cuando el job se solapa.
+        const existingTx = await prisma.transaction.findFirst({
+          where: {
+            userId: recurring.userId,
+            title: recurring.title,
+            amount: recurring.amount,
+            categoryId: recurring.categoryId,
+            date: { gte: startOfDay(txDate), lte: endOfDay(txDate) },
+          },
+        });
 
-        // Calcular la próxima ejecución
-        const newNext = calculateNextRun(recurring.nextRun || txDate, recurring.frequencyValue, recurring.frequencyUnit);
+        if (existingTx) {
+          console.log(`[recurringService] Se detectó transacción existente para recurringId=${recurring.id} en la fecha ${txDate.toISOString()}, omitiendo creación (id: ${existingTx.id})`);
+        } else {
+          const transaction = await prisma.transaction.create({ data: { title: recurring.title, type: recurring.type, amount: recurring.amount, date: txDate, description: recurring.description, categoryId: recurring.categoryId, userId: recurring.userId } });
 
-        const updateData = { lastRunAt: new Date(), nextRun: newNext };
-        // Si existe endDate y newNext > endDate (tratada como fin del día) => desactivar
-        if (recurring.endDate && isAfter(newNext, endOfDay(new Date(recurring.endDate)))) {
-          updateData.isActive = false;
-        }
+          // Calcular la próxima ejecución
 
-        await prisma.recurringTransaction.update({ where: { id: recurring.id }, data: updateData });
+          const newNext = calculateNextRun(recurring.nextRun || txDate, recurring.frequencyValue, recurring.frequencyUnit);
 
-        // Notificar al usuario si aplica
-        if (recurring.notifyOnRun) {
-          try {
-            await notificationService.sendToUser(recurring.userId, { notification: { title: `Transacción creada: ${recurring.title}`, body: `Se ha creado una transacción recurrente por ${recurring.amount}` }, data: { recurringId: recurring.id } });
-          } catch (nerr) {
-            console.warn('Fallo notificación al procesar recurrente', recurring.id, nerr?.message || nerr);
+          const updateData = { lastRunAt: new Date(), nextRun: newNext };
+          // Si existe endDate y newNext > endDate (tratada como fin del día) => desactivar
+          if (recurring.endDate && isAfter(newNext, endOfDay(new Date(recurring.endDate)))) {
+            updateData.isActive = false;
           }
-        }
 
-        // Emitir evento SSE al usuario para que la UI pueda refrescarse automáticamente
-        try {
-          sseService.broadcastToUser(recurring.userId, 'transaction_created', transaction);
-        } catch (e) {
-          console.warn('[recurringService] fallo al emitir evento SSE', e?.message || e);
-        }
+          await prisma.recurringTransaction.update({ where: { id: recurring.id }, data: updateData });
 
-        results.processed++;
-        results.transactions.push(transaction);
+          // Notificar al usuario si aplica
+          if (recurring.notifyOnRun) {
+            try {
+              await notificationService.sendToUser(recurring.userId, { notification: { title: `Transacción creada: ${recurring.title}`, body: `Se ha creado una transacción recurrente por ${recurring.amount}` }, data: { recurringId: recurring.id } });
+            } catch (nerr) {
+              console.warn('Fallo notificación al procesar recurrente', recurring.id, nerr?.message || nerr);
+            }
+          }
+
+          // Emitir evento SSE al usuario para que la UI pueda refrescarse automáticamente
+          try {
+            sseService.broadcastToUser(recurring.userId, 'transaction_created', transaction);
+          } catch (e) {
+            console.warn('[recurringService] fallo al emitir evento SSE', e?.message || e);
+          }
+
+          results.processed++;
+          results.transactions.push(transaction);
+        }
+        // Si se detectó transacción existente, contarlo como procesada/omitida
+        if (existingTx) {
+          results.processed++;
+        }
       } catch (error) {
         console.error(`Error procesando transacción recurrente ${recurring.id}:`, error);
         results.failed++;
@@ -333,13 +356,32 @@ export const runNow = async (userId, recurringId) => {
     if (!recurring) { const err = new Error('Transacción recurrente no encontrada'); err.status = 404; throw err; }
 
     const txDate = new Date();
-    const transaction = await prisma.transaction.create({ data: { title: recurring.title, type: recurring.type, amount: recurring.amount, date: txDate, description: recurring.description, categoryId: recurring.categoryId, userId: recurring.userId } });
+    // Prevención de duplicados: comprobar si ya existe una transacción similar
+    // para el mismo usuario en el mismo día. Si existe, actualizamos nextRun
+    // y devolvemos la transacción existente.
+    const existingTx = await prisma.transaction.findFirst({
+      where: {
+        userId: recurring.userId,
+        title: recurring.title,
+        amount: recurring.amount,
+        categoryId: recurring.categoryId,
+        date: { gte: startOfDay(txDate), lte: endOfDay(txDate) },
+      },
+    });
 
-    // Calcular la próxima ejecución
     const newNext = calculateNextRun(recurring.nextRun || txDate, recurring.frequencyValue, recurring.frequencyUnit);
     const updateData = { lastRunAt: new Date(), nextRun: newNext };
     if (recurring.endDate && isAfter(newNext, endOfDay(new Date(recurring.endDate)))) updateData.isActive = false;
     await prisma.recurringTransaction.update({ where: { id: recurring.id }, data: updateData });
+
+    if (existingTx) {
+      console.log(`[recurringService] runNow: transacción existente encontrada para recurringId=${recurringId}, devolviendo existente id=${existingTx.id}`);
+      // Emitir SSE para la UI con la transacción existente
+      try { sseService.broadcastToUser(recurring.userId, 'transaction_created', existingTx); } catch (e) { console.warn('[recurringService] fallo SSE runNow existingTx', e?.message || e); }
+      return existingTx;
+    }
+
+    const transaction = await prisma.transaction.create({ data: { title: recurring.title, type: recurring.type, amount: recurring.amount, date: txDate, description: recurring.description, categoryId: recurring.categoryId, userId: recurring.userId } });
 
     if (recurring.notifyOnRun) {
       try { await notificationService.sendToUser(recurring.userId, { notification: { title: `Transacción creada: ${recurring.title}`, body: `Se ha creado una transacción recurrente por ${recurring.amount}` }, data: { recurringId: recurring.id } }); } catch (nerr) { console.warn('Fallo notificación runNow', nerr?.message || nerr); }

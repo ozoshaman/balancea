@@ -10,14 +10,26 @@ import { processRecurringTransactions } from '../services/recurringTransactionSe
  */
 export const startRecurringTransactionsCron = () => {
   const schedule = process.env.NODE_ENV === 'production' ? '0 * * * *' : '*/1 * * * *';
+  // Simple guard para evitar que el mismo proceso ejecute varias instancias concurrentes
+  // (por ejemplo, si la pasada inicial tarda más que el intervalo). Para entornos con
+  // múltiples instancias/procesos en diferentes hosts, debe implementarse un lock
+  // distribuido en la BD/Redis.
+  let isRunning = false;
 
   cron.schedule(schedule, async () => {
+    if (isRunning) {
+      console.log('⏭️ Job de recurrentes ya en ejecución, omitiendo esta pasada.');
+      return;
+    }
+    isRunning = true;
     console.log('🔄 Ejecutando job de transacciones recurrentes...');
     try {
       const results = await processRecurringTransactions();
       console.log(`✅ Job completado: ${results.processed} procesadas, ${results.failed} fallidas`);
     } catch (error) {
       console.error('❌ Error en job de transacciones recurrentes:', error);
+    } finally {
+      isRunning = false;
     }
   });
 
@@ -25,10 +37,14 @@ export const startRecurringTransactionsCron = () => {
   (async () => {
     try {
       console.log('🔁 Ejecutando pasada inicial de recurrentes al iniciar servidor...');
+      // Marcar como en ejecución para evitar solapamientos con el cron programado
+      isRunning = true;
       const results = await processRecurringTransactions();
       console.log(`🔁 Pasada inicial completada: ${results.processed} procesadas, ${results.failed} fallidas`);
     } catch (err) {
       console.error('❌ Error en pasada inicial de recurrentes:', err);
+    } finally {
+      isRunning = false;
     }
   })();
 
