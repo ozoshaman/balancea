@@ -72,13 +72,36 @@ export const getFCMToken = async (vapidKey) => {
       return null;
     }
 
-    // Obtener token
-    const token = await getToken(messaging, {
+    // Nota: dejamos que el SW PWA unificado maneje los mensajes en background.
+    // No registrar aquí '/firebase-messaging-sw.js' para evitar conflictos de scope.
+    // En su lugar, si existe un ServiceWorker controlando la página, pasamos
+    // su `ServiceWorkerRegistration` a `getToken` para que no intente registrar uno nuevo.
+    let swRegistration = null;
+    try {
+      if ('serviceWorker' in navigator) {
+        // `navigator.serviceWorker.ready` resuelve cuando un SW controla la página
+        swRegistration = await navigator.serviceWorker.ready.catch(() => null);
+      }
+    } catch (swErr) {
+      console.warn('[firebaseConfig] No se pudo obtener serviceWorker.ready:', swErr?.message || swErr);
+      swRegistration = null;
+    }
+
+    // Obtener token (si tenemos registration, lo pasamos; si no, SDK intentará lo que considere)
+    const tokenOptions = {
       vapidKey: vapidKey || process.env.REACT_APP_FIREBASE_VAPID_KEY
-    });
+    };
+
+    if (swRegistration) {
+      tokenOptions.serviceWorkerRegistration = swRegistration;
+    }
+
+    const token = await getToken(messaging, tokenOptions);
 
     if (token) {
       console.log('✅ Token FCM obtenido:', token.substring(0, 50) + '...');
+      // Guardar token en localStorage para comparaciones futuras
+      try { localStorage.setItem('fcmToken', token); } catch (e) { }
       return token;
     } else {
       console.log('No se pudo obtener token FCM');
@@ -164,17 +187,37 @@ export const sendTokenToServer = async (token) => {
   try {
     // Importar dinámicamente para evitar dependencias circulares
     const { default: api } = await import('./axiosConfig');
-    
+    console.log('📤 Enviando token al servidor', { token: token?.substring(0,24) + '...' });
+
     const response = await api.post('/notifications/register-token', {
       token,
       platform: 'web'
     });
 
-    console.log('✅ Token enviado al servidor:', response.data);
+    console.log('✅ Token enviado al servidor:', response?.data);
     return true;
   } catch (error) {
-    console.error('❌ Error enviando token al servidor:', error);
+    console.error('❌ Error enviando token al servidor:', error?.message || error, error?.data || 'no-data');
     return false;
+  }
+};
+
+/**
+ * Forzar refresco del token: obtener token actual y reenviarlo al servidor si cambió
+ */
+export const refreshFCMToken = async (vapidKey) => {
+  try {
+    const token = await getFCMToken(vapidKey);
+    if (!token) return null;
+    const previous = localStorage.getItem('fcmToken');
+    if (previous !== token) {
+      console.log('[firebaseConfig] Token cambiado o nuevo, reenviando al servidor');
+      await sendTokenToServer(token);
+    }
+    return token;
+  } catch (err) {
+    console.error('Error en refreshFCMToken:', err);
+    return null;
   }
 };
 
@@ -184,12 +227,13 @@ export const sendTokenToServer = async (token) => {
 export const removeTokenFromServer = async (token) => {
   try {
     const { default: api } = await import('./axiosConfig');
-    
-    await api.post('/notifications/remove-token', { token });
-    console.log('✅ Token eliminado del servidor');
+    console.log('📤 Solicitando eliminación de token al servidor', { token: token?.substring(0,24) + '...' });
+
+    const resp = await api.post('/notifications/remove-token', { token });
+    console.log('✅ Token eliminado del servidor', resp?.data);
     return true;
   } catch (error) {
-    console.error('❌ Error eliminando token:', error);
+    console.error('❌ Error eliminando token:', error?.message || error, error?.data || 'no-data');
     return false;
   }
 };

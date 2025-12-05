@@ -1,5 +1,6 @@
 // src/services/transactionService.js
 import { PrismaClient } from '@prisma/client';
+import * as notificationService from './notificationService.js';
 
 const prisma = new PrismaClient();
 
@@ -77,6 +78,29 @@ export const createTransaction = async (userId, transactionData) => {
         },
       },
     });
+
+    // Después de crear, verificar balance y notificar si es negativo
+    try {
+      console.log('[transactionService] checking balance after create for user', { userId });
+      const bal = await getUserBalance(userId);
+      console.log('[transactionService] balance result', { userId, balance: bal?.balance });
+      if (bal && bal.balance < 0) {
+        const payload = {
+          notification: {
+            title: 'Balance negativo',
+            body: `Tu balance general es ${bal.balance.toFixed(2)}. Revisa tus finanzas.`
+          },
+          data: { url: '/dashboard' }
+        };
+        console.log('[transactionService] sending negative-balance notification', { userId, balance: bal.balance });
+        // Fire and forget; capturar errores internamente
+        notificationService.sendToUser(userId, payload).catch((e) => {
+          console.warn('Error enviando notificación de balance negativo:', e?.message || e);
+        });
+      }
+    } catch (err) {
+      console.warn('No fue posible verificar/enviar notificación de balance:', err?.message || err);
+    }
 
     return transaction;
   } catch (error) {
@@ -291,6 +315,28 @@ export const updateTransaction = async (userId, transactionId, updateData) => {
       },
     });
 
+    // Después de actualizar, verificar balance y notificar si es negativo
+    try {
+      console.log('[transactionService] checking balance after update for user', { userId });
+      const bal = await getUserBalance(userId);
+      console.log('[transactionService] balance result (update)', { userId, balance: bal?.balance });
+      if (bal && bal.balance < 0) {
+        const payload = {
+          notification: {
+            title: 'Balance negativo',
+            body: `Tu balance general es ${bal.balance.toFixed(2)}. Revisa tus finanzas.`
+          },
+          data: { url: '/dashboard' }
+        };
+        console.log('[transactionService] sending negative-balance notification (update)', { userId, balance: bal.balance });
+        notificationService.sendToUser(userId, payload).catch((e) => {
+          console.warn('Error enviando notificación de balance negativo:', e?.message || e);
+        });
+      }
+    } catch (err) {
+      console.warn('No fue posible verificar/enviar notificación de balance (update):', err?.message || err);
+    }
+
     return transaction;
   } catch (error) {
     if (error.status) throw error;
@@ -322,6 +368,28 @@ export const deleteTransaction = async (userId, transactionId) => {
     await prisma.transaction.delete({
       where: { id: transactionId },
     });
+
+    // Después de eliminar, verificar balance y notificar si es negativo
+    try {
+      console.log('[transactionService] checking balance after delete for user', { userId });
+      const bal = await getUserBalance(userId);
+      console.log('[transactionService] balance result (delete)', { userId, balance: bal?.balance });
+      if (bal && bal.balance < 0) {
+        const payload = {
+          notification: {
+            title: 'Balance negativo',
+            body: `Tu balance general es ${bal.balance.toFixed(2)}. Revisa tus finanzas.`
+          },
+          data: { url: '/dashboard' }
+        };
+        console.log('[transactionService] sending negative-balance notification (delete)', { userId, balance: bal.balance });
+        notificationService.sendToUser(userId, payload).catch((e) => {
+          console.warn('Error enviando notificación de balance negativo:', e?.message || e);
+        });
+      }
+    } catch (err) {
+      console.warn('No fue posible verificar/enviar notificación de balance (delete):', err?.message || err);
+    }
 
     return { message: 'Transacción eliminada exitosamente' };
   } catch (error) {

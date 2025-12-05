@@ -10,9 +10,10 @@ const prisma = new PrismaClient();
  */
 export const authenticateToken = async (req, res, next) => {
   try {
-    // Obtener el token del header
+    // Obtener el token del header o de la query (útil para EventSource donde no se pueden enviar headers)
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    let token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    if (!token && req.query && req.query.token) token = req.query.token;
 
     if (!token) {
       return errorResponse(res, 'Token no proporcionado', 401);

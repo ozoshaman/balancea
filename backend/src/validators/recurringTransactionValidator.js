@@ -33,11 +33,17 @@ export const createRecurringValidation = [
     .isMongoId()
     .withMessage('ID de categoría inválido'),
 
-  body('frequency')
+  body('frequencyValue')
     .notEmpty()
-    .withMessage('La frecuencia es requerida')
-    .isIn(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'])
-    .withMessage('La frecuencia debe ser DAILY, WEEKLY, MONTHLY o YEARLY'),
+    .withMessage('frequencyValue es requerido')
+    .isInt({ min: 1 })
+    .withMessage('frequencyValue debe ser un entero mayor o igual a 1'),
+
+  body('frequencyUnit')
+    .notEmpty()
+    .withMessage('frequencyUnit es requerido')
+    .isIn(['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS', 'YEARS'])
+    .withMessage('frequencyUnit inválido'),
 
   body('startDate')
     .notEmpty()
@@ -46,7 +52,7 @@ export const createRecurringValidation = [
     .withMessage('La fecha de inicio debe ser válida'),
 
   body('endDate')
-    .optional()
+    .optional({ checkFalsy: true })
     .isISO8601()
     .withMessage('La fecha de fin debe ser válida'),
 ];
@@ -81,10 +87,20 @@ export const updateRecurringValidation = [
     .isMongoId()
     .withMessage('ID de categoría inválido'),
 
-  body('frequency')
+  body('frequencyValue')
     .optional()
-    .isIn(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'])
-    .withMessage('La frecuencia debe ser DAILY, WEEKLY, MONTHLY o YEARLY'),
+    .isInt({ min: 1 })
+    .withMessage('frequencyValue debe ser un entero mayor o igual a 1'),
+
+  body('frequencyUnit')
+    .optional()
+    .isIn(['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS', 'YEARS'])
+    .withMessage('frequencyUnit inválido'),
+
+  body('notifyOnRun')
+    .optional()
+    .isBoolean()
+    .withMessage('notifyOnRun debe ser booleano'),
 
   body('startDate')
     .optional()
@@ -92,7 +108,7 @@ export const updateRecurringValidation = [
     .withMessage('La fecha de inicio debe ser válida'),
 
   body('endDate')
-    .optional()
+    .optional({ checkFalsy: true })
     .isISO8601()
     .withMessage('La fecha de fin debe ser válida'),
 

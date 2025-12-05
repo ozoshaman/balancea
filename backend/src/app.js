@@ -21,14 +21,18 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
+// Rate limiting (configurable)
+const rateWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000; // 15 minutos por defecto
+const rateMax = Number(process.env.RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'development' ? 1000 : 100);
+
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // límite de 100 peticiones por IP
+  windowMs: rateWindowMs,
+  max: rateMax,
   message: 'Demasiadas peticiones desde esta IP, intenta de nuevo más tarde'
 });
 
 app.use('/api/', limiter);
+console.log(`🔒 Rate limiter: max=${rateMax} windowMs=${rateWindowMs} (NODE_ENV=${process.env.NODE_ENV})`);
 
 // Rutas
 app.use('/api', routes);

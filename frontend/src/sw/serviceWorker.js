@@ -1,34 +1,39 @@
 /* eslint-disable no-restricted-globals */
-/* Importar Dexie para usar IndexedDB en Service Worker */
-importScripts('https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js');
+// ============================================================================
+// SERVICE WORKER UNIFICADO - BALANCEA PWA
+// ============================================================================
+// Versión: 2.1.0 - FIX: Timeout y SSE issues
+// ============================================================================
 
-// Nombre de la caché y versión
-const CACHE_NAME = 'balancea-v1';
-const RUNTIME_CACHE = 'balancea-runtime-v1';
-const API_CACHE = 'balancea-api-v1';
-let isSyncingTransactions = false;
-// Backend API base URL (use explicit backend host because SW requests
-// can't rely on dev-server proxy). Adjust for production via build-time
-// replacement if needed.
+// ============================
+// IMPORTS
+// ============================
+importScripts('https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+
+// ============================
+// CONFIGURACIÓN
+// ============================
+const CACHE_NAME = 'balancea-v2.1'; // ⚠️ Cambiar versión para limpiar cachés
+const RUNTIME_CACHE = 'balancea-runtime-v2.1';
+const API_CACHE = 'balancea-api-v2.1';
 const API_BASE = 'http://localhost:5000/api';
 
-// In-memory pending auth token (used if IndexedDB `settings` table is not yet available)
-let pendingAuthToken = '';
+// Estado global del SW
+const swState = {
+  isSyncingTransactions: false,
+  isSyncingRecurrings: false,
+  isDbReady: false,
+  pendingAuthToken: '',
+  lastSyncAttempt: 0,
+  firebaseInitialized: false
+};
 
-function hasTable(name) {
-  try {
-    return Array.isArray(db.tables) && db.tables.some(t => t.name === name);
-  } catch (e) {
-    return false;
-  }
-}
-
-// URLs a cachear durante la instalación (App Shell)
+// URLs a pre-cachear (App Shell)
 const PRECACHE_URLS = [
   '/',
   '/index.html',
-  '/static/css/main.css',
-  '/static/js/main.js',
   '/manifest.json',
   '/offline.html',
   '/icons/icon-144x144.png',
@@ -37,78 +42,187 @@ const PRECACHE_URLS = [
 ];
 
 // ============================
-// Configurar Dexie en Service Worker
+// CONFIGURAR DEXIE
 // ============================
 const db = new Dexie('BalanceaDB');
-// NOTE: Do not declare schema version inside the Service Worker. The main app
-// manages the IndexedDB schema (via `frontend/src/services/indexedDB/db.js`).
-// Declaring a different `version()` here can cause VersionError when the
-// native DB version differs. We rely on the app to have created the needed
-// object stores; SW operations handle missing stores gracefully via try/catch.
+
+function hasTable(name) {
+  try {
+    if (!db.isOpen()) return false;
+    return Array.isArray(db.tables) && db.tables.some(t => t.name === name);
+  } catch (e) {
+    return false;
+  }
+}
+
+async function ensureDbOpen() {
+  if (!db.isOpen()) {
+    try {
+      console.log('[SW] 🔓 Abriendo IndexedDB...');
+      await db.open();
+      swState.isDbReady = true;
+      console.log('[SW] ✅ IndexedDB abierto correctamente');
+    } catch (error) {
+      if (error.name === 'NoSuchDatabaseError') {
+        console.warn('[SW] ⚠️ IndexedDB no existe aún (normal en primera carga)');
+        swState.isDbReady = false;
+        return false;
+      }
+      
+      console.error('[SW] ❌ Error crítico abriendo IndexedDB:', error);
+      swState.isDbReady = false;
+      return false;
+    }
+  }
+  return db.isOpen();
+}
 
 // ============================
-// EVENTO: INSTALL
+// CONFIGURAR FIREBASE
+// ============================
+const firebaseConfig = {
+  apiKey: "AIzaSyCLaLQ5e6oSQw5DdEvYXlZhUF9NncxKBVY",
+  authDomain: "balancea-pwa.firebaseapp.com",
+  projectId: "balancea-pwa",
+  storageBucket: "balancea-pwa.firebasestorage.app",
+  messagingSenderId: "622887469450",
+  appId: "1:622887469450:web:9ccaf9be517fccb7de0873",
+  measurementId: "G-GYK97PXRLY"
+};
+
+// Inicializar Firebase
+try {
+  if (!swState.firebaseInitialized) {
+    firebase.initializeApp(firebaseConfig);
+    swState.firebaseInitialized = true;
+    console.log('[SW] 🔥 Firebase inicializado correctamente');
+  }
+} catch (e) {
+  console.warn('[SW] ⚠️ Firebase ya inicializado o error:', e?.message || e);
+}
+
+const messaging = firebase.messaging();
+
+// ============================
+// FIREBASE MESSAGING HANDLERS
+// ============================
+messaging.onBackgroundMessage((payload) => {
+  console.log('[SW] 📬 Mensaje Firebase en background:', payload);
+
+  const notificationTitle = payload.notification?.title || 'Balancea';
+  const notificationOptions = {
+    body: payload.notification?.body || 'Tienes una nueva notificación',
+    icon: payload.notification?.icon || '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
+    tag: payload.notification?.tag || 'balancea-notification',
+    requireInteraction: false,
+    vibrate: [200, 100, 200],
+    data: {
+      url: payload.data?.url || '/',
+      action: payload.data?.action,
+      ...payload.data
+    },
+    actions: [
+      { action: 'open', title: 'Abrir' },
+      { action: 'close', title: 'Cerrar' }
+    ]
+  };
+
+  return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// ============================================================================
+// EVENTOS DEL SERVICE WORKER
+// ============================================================================
+
+// ============================
+// INSTALL
 // ============================
 self.addEventListener('install', (event) => {
-  console.log('[SW] Instalando Service Worker...');
+  console.log('[SW] 📦 Instalando Service Worker v2.1...');
   
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Pre-cacheando App Shell');
-        return cache.addAll(PRECACHE_URLS);
-      })
-      .then(() => {
-        console.log('[SW] Instalación completa');
-        return self.skipWaiting();
-      })
-      .catch((error) => {
-        console.error('[SW] Error en instalación:', error);
-      })
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.addAll(PRECACHE_URLS);
+        console.log('[SW] ✅ App Shell cacheado');
+        await self.skipWaiting();
+      } catch (error) {
+        console.error('[SW] ❌ Error en instalación:', error);
+      }
+    })()
   );
 });
 
 // ============================
-// EVENTO: ACTIVATE
+// ACTIVATE
 // ============================
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activando Service Worker...');
+  console.log('[SW] 🔄 Activando Service Worker v2.1...');
   
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames
-            .filter((name) => {
-              return name !== CACHE_NAME && 
-                     name !== RUNTIME_CACHE && 
-                     name !== API_CACHE;
-            })
-            .map((name) => {
-              console.log('[SW] Eliminando caché antigua:', name);
-              return caches.delete(name);
-            })
-        );
-      })
-      .then(() => {
-        console.log('[SW] Service Worker activado');
-        return self.clients.claim();
-      })
+    (async () => {
+      // Limpiar cachés antiguos
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter(name => 
+            name !== CACHE_NAME && 
+            name !== RUNTIME_CACHE && 
+            name !== API_CACHE
+          )
+          .map(name => {
+            console.log('[SW] 🗑️ Eliminando caché antigua:', name);
+            return caches.delete(name);
+          })
+      );
+      
+      // Intentar inicializar IndexedDB
+      try {
+        await ensureDbOpen();
+        console.log('[SW] ✅ IndexedDB inicializado en activate');
+      } catch (error) {
+        console.warn('[SW] ⚠️ IndexedDB no disponible en activate');
+      }
+      
+      await self.clients.claim();
+      console.log('[SW] ✅ Service Worker activado');
+    })()
   );
 });
 
 // ============================
-// EVENTO: FETCH
+// FETCH: ESTRATEGIAS DE CACHÉ
 // ============================
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Ignorar métodos no-GET
   if (request.method !== 'GET') {
     return;
   }
 
+  // Ignorar extensiones del navegador
   if (url.protocol === 'chrome-extension:') {
+    return;
+  }
+
+  // ⚠️ CRÍTICO: NO interceptar Firebase ni Google APIs
+  if (url.pathname.includes('firebase') || 
+      url.pathname.includes('fcmtoken') || 
+      url.pathname.includes('google') ||
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('firebaseio.com')) {
+    return;
+  }
+
+  // ⚠️ FIX: NO interceptar SSE (Server-Sent Events)
+  const acceptHeader = request.headers.get('accept') || '';
+  if (acceptHeader.includes('text/event-stream') || 
+      url.pathname.includes('/stream/')) {
+    console.log('[SW] 🔴 SSE request, NO interceptando:', url.pathname);
     return;
   }
 
@@ -117,438 +231,442 @@ self.addEventListener('fetch', (event) => {
       request.destination === 'style' || 
       request.destination === 'image' ||
       request.destination === 'font') {
-    
-    event.respondWith(
-      caches.match(request)
-        .then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          return fetch(request)
-            .then((response) => {
-              if (!response || response.status !== 200 || response.type === 'error') {
-                return response;
-              }
-
-              const responseToCache = response.clone();
-              caches.open(RUNTIME_CACHE)
-                .then((cache) => {
-                  cache.put(request, responseToCache);
-                });
-
-              return response;
-            })
-            .catch((error) => {
-              console.error('[SW] Error en fetch de asset:', request.url, error);
-              // Fallback según tipo de recurso para evitar servir HTML en lugar de JS/CSS
-              if (request.destination === 'script') {
-                return new Response('/* offline */', { headers: { 'Content-Type': 'application/javascript' } });
-              }
-
-              if (request.destination === 'style') {
-                return new Response('/* offline */', { headers: { 'Content-Type': 'text/css' } });
-              }
-
-              if (request.destination === 'image') {
-                // Devolver un SVG inline como placeholder
-                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="100%" height="100%" fill="#eee"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999" font-size="14">offline</text></svg>`;
-                return new Response(svg, { headers: { 'Content-Type': 'image/svg+xml' } });
-              }
-
-              if (request.destination === 'font') {
-                return new Response('', { headers: { 'Content-Type': 'font/woff2' } });
-              }
-
-              return caches.match('/offline.html');
-            });
-        })
-    );
+    event.respondWith(handleAssetRequest(request));
     return;
   }
 
-  // Network First para API calls con fallback a IndexedDB
+  // Network First para API (con timeout aumentado)
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const responseToCache = response.clone();
-          caches.open(API_CACHE)
-            .then((cache) => {
-              cache.put(request, responseToCache);
-            });
-          return response;
-        })
-        .catch(() => {
-          return caches.match(request)
-            .then((cachedResponse) => {
-              if (cachedResponse) {
-                console.log('[SW] Usando caché API offline:', request.url);
-                return cachedResponse;
-              }
-              
-              // Si es GET de transacciones, intentar servir desde IndexedDB
-              if (url.pathname === '/api/transactions') {
-                return serveTransactionsFromIndexedDB();
-              }
-
-              return new Response(
-                JSON.stringify({ 
-                  error: 'Sin conexión', 
-                  offline: true 
-                }),
-                {
-                  headers: { 'Content-Type': 'application/json' }
-                }
-              );
-            });
-        })
-    );
+    event.respondWith(handleApiRequest(request));
     return;
   }
 
   // Stale-While-Revalidate para navegación
   if (request.destination === 'document') {
-    event.respondWith(
-      caches.match(request)
-        .then((cachedResponse) => {
-          const fetchPromise = fetch(request)
-            .then((networkResponse) => {
-              caches.open(CACHE_NAME)
-                .then((cache) => {
-                  cache.put(request, networkResponse.clone());
-                });
-              return networkResponse;
-            })
-            .catch((err) => {
-              console.error('[SW] Error fetching document:', request.url, err);
-              // Si falló la red, intentar devolver index.html (app shell) desde cache
-              return caches.match('/index.html')
-                .then((indexCached) => indexCached || caches.match('/offline.html'));
-            });
-
-          return cachedResponse || fetchPromise;
-        })
-    );
+    event.respondWith(handleDocumentRequest(request));
     return;
   }
 
   // Por defecto: Network First
   event.respondWith(
-    fetch(request)
-      .catch(() => caches.match(request))
+    fetch(request).catch(() => caches.match(request))
   );
 });
 
 // ============================
-// Servir transacciones desde IndexedDB
+// HANDLERS DE FETCH
 // ============================
-async function serveTransactionsFromIndexedDB() {
+async function handleAssetRequest(request) {
   try {
-    const transactions = await db.table('transactions').toArray();
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    const response = await fetch(request);
+    
+    if (response.ok && !response.bodyUsed) {
+      const cache = await caches.open(RUNTIME_CACHE);
+      const cloned = response.clone();
+      cache.put(request, cloned).catch(err => 
+        console.warn('[SW] ⚠️ Error cacheando asset:', err)
+      );
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('[SW] ❌ Error en asset:', error);
+    
+    if (request.destination === 'script') {
+      return new Response('console.warn("offline");', { 
+        headers: { 'Content-Type': 'application/javascript' } 
+      });
+    }
+    
+    if (request.destination === 'style') {
+      return new Response('/* offline */', { 
+        headers: { 'Content-Type': 'text/css' } 
+      });
+    }
+    
+    if (request.destination === 'image') {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128">
+        <rect width="100%" height="100%" fill="#eee"/>
+        <text x="50%" y="50%" text-anchor="middle" fill="#999" font-size="14">offline</text>
+      </svg>`;
+      return new Response(svg, { 
+        headers: { 'Content-Type': 'image/svg+xml' } 
+      });
+    }
+    
+    return new Response('', { status: 408 });
+  }
+}
+
+async function handleApiRequest(request) {
+  const url = new URL(request.url);
+  
+  console.log(`[SW] 🌐 API Request: ${url.pathname}`);
+  
+  try {
+    // ⚠️ FIX: Aumentar timeout a 30 segundos y crear nuevo controller por request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log(`[SW] ⏱️ Timeout alcanzado para: ${url.pathname}`);
+      controller.abort();
+    }, 30000);
+    
+    const response = await fetch(request, { 
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    console.log(`[SW] ✅ API Response: ${url.pathname} - Status: ${response.status}`);
+    
+    // ⚠️ FIX: Solo cachear respuestas exitosas
+    if (response.ok && response.status >= 200 && response.status < 300 && !response.bodyUsed) {
+      const cache = await caches.open(API_CACHE);
+      const cloned = response.clone();
+      
+      const contentLength = response.headers.get('content-length');
+      if (!contentLength || parseInt(contentLength) < 1024 * 1024) {
+        cache.put(request, cloned).catch(err => 
+          console.warn('[SW] ⚠️ Error cacheando API:', err)
+        );
+      }
+    }
+    
+    return response;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.warn(`[SW] ⏱️ Request abortado (timeout): ${url.pathname}`);
+      
+      try {
+        console.log('[SW] 🔄 Reintentando sin timeout...');
+        const retryResponse = await fetch(request);
+        console.log('[SW] ✅ Retry exitoso');
+        return retryResponse;
+      } catch (retryError) {
+        console.warn('[SW] ❌ Retry falló, usando caché');
+      }
+    } else {
+      console.warn(`[SW] ⚠️ API offline: ${url.pathname} - Error: ${error.name}`);
+    }
+    
+    const cached = await caches.match(request);
+    if (cached) {
+      console.log('[SW] ✅ Sirviendo desde caché API');
+      return cached;
+    }
+    
+    if (url.pathname === '/api/transactions') {
+      return await serveTransactionsFromIndexedDB();
+    }
     
     return new Response(
-      JSON.stringify({
-        success: true,
-        data: transactions,
-        offline: true,
-        message: 'Datos servidos desde IndexedDB'
-      }),
-      {
-        headers: { 'Content-Type': 'application/json' },
-        status: 200
-      }
-    );
-  } catch (error) {
-    console.error('[SW] Error leyendo IndexedDB:', error);
-    return new Response(
       JSON.stringify({ 
-        error: 'Error accediendo a datos locales',
-        offline: true 
+        error: 'Sin conexión', 
+        offline: true,
+        message: 'No hay datos en caché',
+        requestUrl: url.pathname
       }),
       {
-        headers: { 'Content-Type': 'application/json' },
-        status: 500
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
       }
     );
   }
 }
 
-// ============================
-// EVENTO: SYNC (Background Sync)
-// ============================
+async function handleDocumentRequest(request) {
+  try {
+    const cached = await caches.match(request);
+    
+    const networkPromise = fetch(request)
+      .then(async response => {
+        if (response.ok && !response.bodyUsed) {
+          const cache = await caches.open(CACHE_NAME);
+          const cloned = response.clone();
+          cache.put(request, cloned).catch(err => 
+            console.warn('[SW] ⚠️ Error cacheando documento:', err)
+          );
+        }
+        return response;
+      })
+      .catch(() => null);
+    
+    return cached || await networkPromise || await caches.match('/index.html');
+  } catch (error) {
+    console.error('[SW] ❌ Error en documento:', error);
+    return caches.match('/offline.html');
+  }
+}
+
+async function serveTransactionsFromIndexedDB() {
+  try {
+    const isOpen = await ensureDbOpen();
+    
+    if (!isOpen) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Base de datos local no disponible',
+          offline: true
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (!hasTable('transactions')) {
+      return new Response(
+        JSON.stringify({ error: 'Tabla transactions no disponible', offline: true }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const transactions = await db.table('transactions').toArray();
+    
+    return new Response(
+      JSON.stringify(transactions),
+      {
+        status: 200,
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Served-From': 'IndexedDB'
+        }
+      }
+    );
+  } catch (error) {
+    console.error('[SW] ❌ Error leyendo IndexedDB:', error);
+    return new Response(
+      JSON.stringify({ error: 'Error accediendo a datos locales', offline: true }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+// ============================================================================
+// BACKGROUND SYNC
+// ============================================================================
+
 self.addEventListener('sync', (event) => {
-  console.log('[SW] Background Sync:', event.tag);
+  console.log('[SW] 🔄 Background Sync:', event.tag);
   
   if (event.tag === 'sync-transactions') {
     event.waitUntil(syncTransactions());
   }
   
-  // ⚠️ NO MANEJAR sync-categories AQUÍ
-  // Las categorías se sincronizan desde syncService.js
+  if (event.tag === 'sync-recurrings') {
+    event.waitUntil(syncRecurrings());
+  }
+
+  if (event.tag === 'sync-fcm-token') {
+    event.waitUntil(syncFCMToken());
+  }
 });
-// ============================
-// Sincronizar transacciones pendientes
-// ============================
+
 async function syncTransactions() {
-  // ⚠️ LOCK: Si ya hay una sincronización en progreso, salir
-  if (isSyncingTransactions) {
-    console.log('[SW] ⏸️  Ya hay una sincronización de transacciones en progreso, omitiendo...');
+  const now = Date.now();
+  if (now - swState.lastSyncAttempt < 2000) {
+    console.log('[SW] ⏰ Sync muy reciente, esperando...');
+    return;
+  }
+  
+  if (swState.isSyncingTransactions) {
+    console.log('[SW] ⏸️ Sync ya en progreso');
     return;
   }
 
-  isSyncingTransactions = true;
+  swState.isSyncingTransactions = true;
+  swState.lastSyncAttempt = now;
 
   try {
-    console.log('[SW] 🔄 Sincronizando transacciones offline...');
-    
-    try {
-      if (!db.isOpen()) {
-        console.log('[SW] Dexie cerrado, reabriendo la base de datos...');
-        await db.open();
-      }
-    } catch (openErr) {
-      console.error('[SW] Error reabriendo IndexedDB:', openErr);
-      throw openErr;
-    }
-    
-    if (!hasTable('pendingTransactions')) {
-      console.log('[SW] Tabla pendingTransactions no disponible, omitiendo sync de transacciones');
-      notifyClients({ type: 'SYNC_COMPLETE', synced: 0 });
+    const isOpen = await ensureDbOpen();
+    if (!isOpen || !hasTable('pendingTransactions')) {
+      await notifyClients({ type: 'SYNC_COMPLETE', synced: 0 });
       return;
     }
 
-    // ⚠️ VERIFICAR SI HAY CATEGORÍAS PENDIENTES
     if (hasTable('pendingCategories')) {
       const pendingCats = await db.table('pendingCategories')
-        .where('status')
-        .notEqual('synced')
-        .toArray();
+        .where('status').notEqual('synced').count();
       
-      if (pendingCats && pendingCats.length > 0) {
-        console.log(`[SW] ⏸️  Hay ${pendingCats.length} categorías pendientes. Esperando sincronización manual...`);
-        notifyClients({ 
-          type: 'SYNC_PENDING_CATEGORIES', 
-          message: 'Sincroniza las categorías primero',
-          pendingCategories: pendingCats.length 
-        });
+      if (pendingCats > 0) {
+        await notifyClients({ type: 'SYNC_PENDING_CATEGORIES', pendingCategories: pendingCats });
         return;
       }
     }
 
     const pending = await db.table('pendingTransactions')
-      .where('status')
-      .notEqual('synced')
-      .toArray();
+      .where('status').notEqual('synced').toArray();
 
     if (pending.length === 0) {
-      console.log('[SW] ✅ No hay transacciones pendientes');
-      notifyClients({ type: 'SYNC_COMPLETE', synced: 0 });
+      await notifyClients({ type: 'SYNC_COMPLETE', synced: 0 });
       return;
     }
-
-    console.log(`[SW] 📤 Sincronizando ${pending.length} transacciones...`);
 
     let syncedCount = 0;
     let errorCount = 0;
 
     for (const tx of pending) {
       try {
-        await db.table('pendingTransactions').update(tx.localId, { status: 'syncing' });
-
-        // ⚠️ VALIDAR QUE LA CATEGORÍA YA ESTÉ SINCRONIZADA
-        const isTempId = typeof tx.categoryId === 'string' && /^cat_temp_/.test(tx.categoryId);
-        
-        if (isTempId) {
-          console.log(`[SW] ⏸️  Transacción ${tx.localId} tiene categoryId temporal, omitiendo...`);
-          await db.table('pendingTransactions').update(tx.localId, { status: 'pending' });
+        if (typeof tx.categoryId === 'string' && /^cat_temp_/.test(tx.categoryId)) {
           continue;
         }
 
-        let response;
-        const apiUrl = API_BASE;
-
-        switch (tx.action) {
-          case 'CREATE':
-            response = await fetch(`${apiUrl}/transactions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await getAuthToken()}`
-              },
-              body: JSON.stringify({
-                title: tx.title,
-                type: tx.type,
-                amount: tx.amount,
-                date: tx.date,
-                description: tx.description,
-                categoryId: tx.categoryId
-              })
-            });
-
-            if (response.ok) {
-              const body = await response.json();
-              const createdTx = body?.data;
-              
-              // ⚠️ ELIMINAR TRANSACCIÓN TEMPORAL DE db.transactions
-              if (hasTable('transactions')) {
-                try {
-                  await db.table('transactions').delete(tx.localId);
-                  console.log(`[SW] 🗑️ Transacción temporal eliminada de IndexedDB: ${tx.localId}`);
-                } catch (delErr) {
-                  console.warn('[SW] Warning eliminando transacción temporal:', delErr);
-                }
-              }
-
-              // ⚠️ GUARDAR TRANSACCIÓN REAL
-              if (hasTable('transactions') && createdTx) {
-                await db.table('transactions').put(createdTx);
-                console.log(`[SW] ✅ Transacción real guardada: ${createdTx.id}`);
-              }
-            }
-            break;
-
-          case 'UPDATE':
-            response = await fetch(`${apiUrl}/transactions/${tx.transactionId}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await getAuthToken()}`
-              },
-              body: JSON.stringify({
-                title: tx.title,
-                type: tx.type,
-                amount: tx.amount,
-                date: tx.date,
-                description: tx.description,
-                categoryId: tx.categoryId
-              })
-            });
-
-            if (response.ok) {
-              const body = await response.json();
-              const updatedTx = body?.data;
-              
-              if (hasTable('transactions') && updatedTx) {
-                await db.table('transactions').put(updatedTx);
-              }
-            }
-            break;
-
-          case 'DELETE':
-            response = await fetch(`${apiUrl}/transactions/${tx.transactionId}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${await getAuthToken()}`
-              }
-            });
-
-            if (response.ok && hasTable('transactions')) {
-              await db.table('transactions').delete(tx.transactionId);
-            }
-            break;
-
-          default:
-            throw new Error(`Acción desconocida: ${tx.action}`);
-        }
+        await db.table('pendingTransactions').update(tx.localId, { status: 'syncing' });
+        const response = await syncSingleTransaction(tx);
 
         if (response.ok) {
+          const body = await response.json();
+          if (tx.action === 'CREATE' && body?.data && hasTable('transactions')) {
+            await db.table('transactions').delete(tx.localId);
+            await db.table('transactions').put(body.data);
+          }
           await db.table('pendingTransactions').update(tx.localId, { status: 'synced' });
           syncedCount++;
-          console.log(`[SW] ✅ Transacción sincronizada: ${tx.localId}`);
         } else {
-          let errBody = '';
-          try {
-            const json = await response.clone().json();
-            errBody = json?.message || JSON.stringify(json);
-          } catch (e) {
-            try {
-              errBody = await response.clone().text();
-            } catch (_) {
-              errBody = '';
-            }
-          }
-          throw new Error(`HTTP ${response.status}: ${errBody}`);
+          throw new Error(`HTTP ${response.status}`);
         }
       } catch (error) {
-        console.error(`[SW] ❌ Error sincronizando ${tx.localId}:`, error);
-        
         const retries = (tx.retries || 0) + 1;
         await db.table('pendingTransactions').update(tx.localId, {
-          status: 'error',
-          retries,
-          error: error.message
+          status: 'error', retries, error: error.message
         });
-        
         errorCount++;
       }
     }
 
-    // ⚠️ LIMPIAR pendingTransactions
-    try {
-      if (hasTable('pendingTransactions')) {
-        const synced = await db.table('pendingTransactions').where('status').equals('synced').toArray();
-        await db.table('pendingTransactions').bulkDelete(synced.map(t => t.localId));
-        console.log(`[SW] 🧹 ${synced.length} transacciones sincronizadas limpiadas`);
-      }
-    } catch (cleanErr) {
-      console.warn('[SW] Error limpiando pendingTransactions:', cleanErr);
+    const synced = await db.table('pendingTransactions')
+      .where('status').equals('synced').toArray();
+    await db.table('pendingTransactions').bulkDelete(synced.map(t => t.localId));
+
+    await notifyClients({ type: 'SYNC_COMPLETE', synced: syncedCount, errors: errorCount });
+  } catch (error) {
+    await notifyClients({ type: 'SYNC_ERROR', error: error.message });
+  } finally {
+    swState.isSyncingTransactions = false;
+  }
+}
+
+async function syncSingleTransaction(tx) {
+  const token = await getAuthToken();
+  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+
+  switch (tx.action) {
+    case 'CREATE':
+      return fetch(`${API_BASE}/transactions`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          title: tx.title, type: tx.type, amount: tx.amount,
+          date: tx.date, description: tx.description, categoryId: tx.categoryId
+        })
+      });
+    case 'UPDATE':
+      return fetch(`${API_BASE}/transactions/${tx.transactionId}`, {
+        method: 'PUT', headers, body: JSON.stringify(tx)
+      });
+    case 'DELETE':
+      return fetch(`${API_BASE}/transactions/${tx.transactionId}`, {
+        method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+      });
+    default:
+      throw new Error(`Acción desconocida: ${tx.action}`);
+  }
+}
+
+async function syncRecurrings() {
+  if (swState.isSyncingRecurrings) return;
+  swState.isSyncingRecurrings = true;
+
+  try {
+    const isOpen = await ensureDbOpen();
+    if (!isOpen || !hasTable('pendingRecurrings')) {
+      await notifyClients({ type: 'SYNC_COMPLETED_RECURRINGS', synced: 0 });
+      return;
     }
 
-    console.log(`[SW] ✅ Sincronización completada: ${syncedCount} exitosas, ${errorCount} errores`);
+    const pending = await db.table('pendingRecurrings')
+      .where('status').notEqual('synced').toArray();
 
-    notifyClients({
-      type: 'SYNC_COMPLETE',
-      synced: syncedCount,
-      errors: errorCount
-    });
+    if (pending.length === 0) {
+      await notifyClients({ type: 'SYNC_COMPLETED_RECURRINGS', synced: 0 });
+      return;
+    }
 
-  } catch (error) {
-    console.error('[SW] ❌ Error general en sincronización:', error);
-    notifyClients({ type: 'SYNC_ERROR', error: error.message });
-  } finally {
-    // ⚠️ LIBERAR LOCK
-    isSyncingTransactions = false;
-  }
-}
+    let synced = 0;
+    let errors = 0;
 
- 
-
-// ============================
-// Obtener token de autenticación
-// ============================
-async function getAuthToken() {
-  try {
-    // El token se guarda en localStorage, que no está accesible desde SW
-    // Alternativa: usar IndexedDB para guardar el token
-      if (hasTable('settings')) {
-        const tokenSetting = await db.table('settings').get('authToken');
-        return tokenSetting?.value || pendingAuthToken || '';
+    for (const r of pending) {
+      try {
+        await db.table('pendingRecurrings').update(r.localId, { status: 'syncing' });
+        const response = await syncSingleRecurring(r);
+        if (response.ok) {
+          await db.table('pendingRecurrings').update(r.localId, { status: 'synced' });
+          synced++;
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (err) {
+        const retries = (r.retries || 0) + 1;
+        await db.table('pendingRecurrings').update(r.localId, { 
+          status: 'error', retries, error: err.message 
+        });
+        errors++;
       }
+    }
 
-      // Si la tabla no existe aún en este contexto SW, usar token pendiente en memoria
-      return pendingAuthToken || '';
+    const syncedItems = await db.table('pendingRecurrings')
+      .where('status').equals('synced').toArray();
+    await db.table('pendingRecurrings').bulkDelete(syncedItems.map(i => i.localId));
+
+    await notifyClients({ type: 'SYNC_COMPLETED_RECURRINGS', synced, errors });
   } catch (error) {
-    console.error('[SW] Error obteniendo token:', error);
-    return '';
+    await notifyClients({ type: 'SYNC_ERROR_RECURRINGS', error: error.message });
+  } finally {
+    swState.isSyncingRecurrings = false;
   }
 }
 
-// ============================
-// Notificar a todos los clientes
-// ============================
-async function notifyClients(message) {
-  const clients = await self.clients.matchAll({ includeUncontrolled: true });
-  clients.forEach((client) => {
-    client.postMessage(message);
-  });
+async function syncSingleRecurring(r) {
+  const token = await getAuthToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    'X-Client-Request-Id': r.localId
+  };
+
+  switch (r.action) {
+    case 'CREATE':
+      return fetch(`${API_BASE}/recurring-transactions`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          title: r.title, type: r.type, amount: r.amount,
+          description: r.description, categoryId: r.categoryId,
+          frequencyValue: r.frequencyValue, frequencyUnit: r.frequencyUnit,
+          startDate: r.startDate, endDate: r.endDate, notifyOnRun: r.notifyOnRun
+        })
+      });
+    case 'UPDATE':
+      return fetch(`${API_BASE}/recurring-transactions/${r.transactionId}`, {
+        method: 'PUT', headers, body: JSON.stringify(r)
+      });
+    case 'DELETE':
+      return fetch(`${API_BASE}/recurring-transactions/${r.transactionId}`, {
+        method: 'DELETE', headers
+      });
+    default:
+      throw new Error(`Acción desconocida: ${r.action}`);
+  }
 }
 
-// ============================
-// EVENTO: PUSH (Notificaciones)
-// ============================
+async function syncFCMToken() {
+  console.log('[SW] 🔄 Sincronizando token FCM...');
+}
+
+// ============================================================================
+// NOTIFICACIONES
+// ============================================================================
+
 self.addEventListener('push', (event) => {
-  console.log('[SW] 📬 Push recibido:', event);
-  
   let notificationData = {
     title: 'Balancea',
     body: 'Nueva notificación',
@@ -560,7 +678,7 @@ self.addEventListener('push', (event) => {
       const data = event.data.json();
       notificationData = {
         title: data.notification?.title || 'Balancea',
-        body: data.notification?.body || data.body || 'Nueva notificación',
+        body: data.notification?.body || 'Nueva notificación',
         icon: data.notification?.icon || '/icons/icon-192x192.png',
         badge: '/icons/icon-72x72.png',
         data: data.data || {}
@@ -570,31 +688,23 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const options = {
-    body: notificationData.body,
-    icon: notificationData.icon,
-    badge: notificationData.badge,
-    vibrate: [200, 100, 200],
-    tag: 'balancea-notification',
-    requireInteraction: false,
-    data: notificationData.data,
-    actions: [
-      { action: 'open', title: 'Abrir' },
-      { action: 'close', title: 'Cerrar' }
-    ]
-  };
-
   event.waitUntil(
-    self.registration.showNotification(notificationData.title, options)
+    self.registration.showNotification(notificationData.title, {
+      body: notificationData.body,
+      icon: notificationData.icon,
+      badge: notificationData.badge,
+      vibrate: [200, 100, 200],
+      tag: 'balancea-notification',
+      data: notificationData.data,
+      actions: [
+        { action: 'open', title: 'Abrir' },
+        { action: 'close', title: 'Cerrar' }
+      ]
+    })
   );
 });
 
-// ============================
-// EVENTO: NOTIFICATION CLICK
-// ============================
 self.addEventListener('notificationclick', (event) => {
-  console.log('[SW] 🔔 Notificación clickeada:', event);
-  
   event.notification.close();
 
   if (event.action === 'open' || !event.action) {
@@ -604,7 +714,12 @@ self.addEventListener('notificationclick', (event) => {
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then((windowClients) => {
           for (let client of windowClients) {
-            if (client.url === urlToOpen && 'focus' in client) {
+            if (client.url.includes(self.location.origin) && 'focus' in client) {
+              client.postMessage({
+                type: 'NOTIFICATION_CLICKED',
+                url: urlToOpen,
+                data: event.notification.data
+              });
               return client.focus();
             }
           }
@@ -616,33 +731,63 @@ self.addEventListener('notificationclick', (event) => {
   }
 });
 
-// ============================
-// EVENTO: MESSAGE
-// ============================
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const allClients = await clients.matchAll({ includeUncontrolled: true });
+      allClients.forEach(client => 
+        client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' })
+      );
+    })()
+  );
+});
+
+// ============================================================================
+// MENSAJES DEL CLIENTE
+// ============================================================================
+
 self.addEventListener('message', (event) => {
-  console.log('[SW] 💬 Mensaje recibido:', event.data);
-  
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
   
-  if (event.data && event.data.type === 'GET_VERSION') {
+  if (event.data?.type === 'GET_VERSION') {
     event.ports[0].postMessage({ version: CACHE_NAME });
   }
 
-  // Guardar token de autenticación para uso en sincronización
-  if (event.data && event.data.type === 'SAVE_AUTH_TOKEN') {
-    // Try to persist in IndexedDB; if table missing, keep in memory until available
-    pendingAuthToken = event.data.token || pendingAuthToken;
-
+  if (event.data?.type === 'SAVE_AUTH_TOKEN') {
+    swState.pendingAuthToken = event.data.token;
     if (hasTable('settings')) {
-      db.table('settings').put({ key: 'authToken', value: event.data.token })
-        .then(() => console.log('[SW] Token guardado'))
-        .catch((err) => console.error('[SW] Error guardando token:', err));
-    } else {
-      console.log('[SW] Tabla settings no disponible, token guardado en memoria');
+      db.table('settings')
+        .put({ key: 'authToken', value: event.data.token })
+        .catch(err => console.error('[SW] ❌ Error guardando token:', err));
     }
   }
 });
 
-console.log('[SW] ✅ Service Worker con Dexie cargado');
+// ============================================================================
+// UTILIDADES
+// ============================================================================
+
+async function getAuthToken() {
+  try {
+    const isOpen = await ensureDbOpen();
+    if (isOpen && hasTable('settings')) {
+      const tokenData = await db.table('settings').get('authToken');
+      return tokenData?.value || swState.pendingAuthToken || '';
+    }
+    return swState.pendingAuthToken || '';
+  } catch (error) {
+    return swState.pendingAuthToken || '';
+  }
+}
+
+async function notifyClients(message) {
+  const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+  allClients.forEach(client => client.postMessage(message));
+}
+
+// ============================================================================
+console.log('[SW] ✅ Service Worker UNIFICADO v2.1 cargado correctamente');
+console.log('[SW] 📦 Maneja: Caché + Sync + IndexedDB + Firebase Messaging');
+// ============================================================================

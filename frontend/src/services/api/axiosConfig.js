@@ -25,6 +25,8 @@ const isDev = Boolean(
 // Crear instancia de Axios
 const api = axios.create({
   baseURL,
+  // Fail fast on requests that hang (helps UI avoid indefinite loading spinners)
+  timeout: 15000, // 15 seconds
   headers: {
     'Content-Type': 'application/json',
   },

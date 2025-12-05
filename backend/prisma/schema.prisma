@@ -91,11 +91,14 @@ model RecurringTransaction {
   categoryId  String          @db.ObjectId
   // ⚠️ AGREGAR ESTA RELACIÓN:
   category    Category        @relation("RecurringTransactionCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  frequency   Frequency
   startDate   DateTime
   endDate     DateTime?
   nextRun     DateTime
   isActive    Boolean         @default(true)
+  frequencyValue Int            @default(1)
+  frequencyUnit  FrequencyUnit
+  lastRunAt    DateTime?
+  notifyOnRun  Boolean         @default(true)
   userId      String          @db.ObjectId
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime        @default(now())
@@ -104,6 +107,19 @@ model RecurringTransaction {
   @@index([userId, isActive, nextRun])
   @@index([categoryId]) // ⚠️ AGREGAR ESTE ÍNDICE
   @@map("recurring_transactions")
+}
+
+// Colección para tokens de notificaciones push (FCM)
+model NotificationToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  token     String   @unique
+  platform  String?  @default("web")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("notification_tokens")
 }
 
 enum Role {
@@ -122,9 +138,11 @@ enum TransactionType {
   EXPENSE
 }
 
-enum Frequency {
-  DAILY
-  WEEKLY
-  MONTHLY
-  YEARLY
+enum FrequencyUnit {
+  MINUTES
+  HOURS
+  DAYS
+  WEEKS
+  MONTHS
+  YEARS
 }

@@ -9,8 +9,8 @@ class BalanceaDB extends Dexie {
     super('BalanceaDB');
     
     // Definir el esquema de la base de datos
-    // Versión 4: añadir índice categoryId en pendingTransactions y pendingPremiums
-    this.version(4).stores({
+    // Versión 5: añadir tabla pendingRecurrings para soporte offline de reglas recurrentes
+    this.version(5).stores({
       // Transacciones sincronizadas (copia local de datos del servidor)
       transactions: 'id, userId, type, date, categoryId, amount, *tags',
       
@@ -23,6 +23,8 @@ class BalanceaDB extends Dexie {
 
       // Cola de upgrades a PREMIUM pendientes
       pendingPremiums: '++localId, userId, status, createdAt',
+      // Cola de reglas recurrentes pendientes de sincronizar (CREATE/UPDATE/DELETE)
+      pendingRecurrings: '++localId, userId, action, status, retries',
       
       // Categorías (cache)
       categories: 'id, userId, name',
@@ -40,6 +42,7 @@ class BalanceaDB extends Dexie {
     this.categories = this.table('categories');
     this.pendingCategories = this.table('pendingCategories');
     this.pendingPremiums = this.table('pendingPremiums');
+    this.pendingRecurrings = this.table('pendingRecurrings');
     this.settings = this.table('settings');
     this.stats = this.table('stats');
   }
@@ -298,6 +301,82 @@ class BalanceaDB extends Dexie {
     } catch (error) {
       console.error('❌ Error agregando categoría pendiente:', error);
       throw error;
+    }
+  }
+
+  // ============================
+  // Métodos de Cola de Recurrentes (offline)
+  // ============================
+
+  async addPendingRecurring(recurring) {
+    try {
+      const pending = {
+        ...recurring,
+        status: 'pending',
+        retries: 0,
+        createdAt: new Date().toISOString(),
+        error: null
+      };
+
+      const localId = await this.pendingRecurrings.add(pending);
+      console.log('✅ Recurrente agregada a cola offline:', localId);
+      return { ...pending, localId };
+    } catch (error) {
+      console.error('❌ Error agregando recurrente pendiente:', error);
+      throw error;
+    }
+  }
+
+  async getPendingRecurrings(userId) {
+    try {
+      return await this.pendingRecurrings
+        .where('userId')
+        .equals(userId)
+        .and(r => r.status !== 'synced')
+        .toArray();
+    } catch (error) {
+      console.error('❌ Error obteniendo recurrentes pendientes:', error);
+      return [];
+    }
+  }
+
+  async updatePendingRecurringStatus(localId, status, serverId = null, error = null) {
+    try {
+      const updates = { status };
+      if (serverId) updates.serverId = serverId;
+      if (error) updates.error = error;
+      if (status === 'error') {
+        const r = await this.pendingRecurrings.get(localId);
+        updates.retries = (r?.retries || 0) + 1;
+      }
+
+      await this.pendingRecurrings.update(localId, updates);
+      console.log(`✅ Estado recurrente actualizado: ${localId} → ${status}`);
+    } catch (err) {
+      console.error('❌ Error actualizando estado recurrente:', err);
+    }
+  }
+
+  async removePendingRecurring(localId) {
+    try {
+      await this.pendingRecurrings.delete(localId);
+      console.log('✅ Recurrente pendiente eliminada:', localId);
+    } catch (error) {
+      console.error('❌ Error eliminando recurrente pendiente:', error);
+    }
+  }
+
+  async cleanSyncedRecurrings() {
+    try {
+      const synced = await this.pendingRecurrings
+        .where('status')
+        .equals('synced')
+        .toArray();
+
+      await this.pendingRecurrings.bulkDelete(synced.map(r => r.localId));
+      console.log(`✅ ${synced.length} recurrentes sincronizadas limpiadas`);
+    } catch (error) {
+      console.error('❌ Error limpiando recurrentes sincronizadas:', error);
     }
   }
 

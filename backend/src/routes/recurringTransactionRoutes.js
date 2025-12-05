@@ -23,6 +23,10 @@ router.put('/:id', updateRecurringValidation, validate, recurringController.upda
 router.delete('/:id', recurringIdValidation, validate, recurringController.deleteRecurringTransaction);
 
 // Endpoint para procesar transacciones recurrentes (puede ser usado por un cron job)
+// Ejecutar ahora una recurrencia específica
+router.post('/:id/run', recurringIdValidation, validate, recurringController.runNowRecurring);
+
+// Endpoint para procesar transacciones recurrentes (puede ser usado por un cron job)
 router.post('/process', recurringController.processRecurring);
 
 export default router;

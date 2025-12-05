@@ -743,6 +743,162 @@ class SyncService {
   }
 
   // ============================
+  // Recurrentes (offline)
+  // ============================
+
+  async createRecurringOffline(recurringData, userId) {
+    try {
+      const pending = {
+        ...recurringData,
+        userId,
+        action: 'CREATE',
+        localId: `r_temp_${Date.now()}_${Math.random().toString(36).substr(2,9)}`
+      };
+
+      const saved = await db.addPendingRecurring(pending);
+
+      // Notify UI that a recurring was created offline
+      this.notifyListeners({ type: 'RECURRING_CREATED_OFFLINE', recurring: { id: saved.localId, ...pending }, online: false });
+
+      // Request background sync
+      this.registerBackgroundSync('sync-recurrings');
+
+      return { success: true, data: saved, offline: true };
+    } catch (err) {
+      console.error('Error creando recurrente offline:', err);
+      throw err;
+    }
+  }
+
+  async updateRecurringOffline(recurringId, updateData, userId) {
+    try {
+      const pending = {
+        transactionId: recurringId,
+        ...updateData,
+        userId,
+        action: 'UPDATE',
+        localId: `r_update_${Date.now()}_${Math.random().toString(36).substr(2,9)}`
+      };
+
+      const saved = await db.addPendingRecurring(pending);
+      this.notifyListeners({ type: 'RECURRING_UPDATED_OFFLINE', recurring: pending, online: false });
+      this.registerBackgroundSync('sync-recurrings');
+      return { success: true, data: saved, offline: true };
+    } catch (err) {
+      console.error('Error actualizando recurrente offline:', err);
+      throw err;
+    }
+  }
+
+  async deleteRecurringOffline(recurringId, userId) {
+    try {
+      const pending = {
+        transactionId: recurringId,
+        userId,
+        action: 'DELETE',
+        localId: `r_delete_${Date.now()}_${Math.random().toString(36).substr(2,9)}`
+      };
+
+      const saved = await db.addPendingRecurring(pending);
+      this.notifyListeners({ type: 'RECURRING_DELETED_OFFLINE', recurringId, online: false });
+      this.registerBackgroundSync('sync-recurrings');
+      return { success: true, data: saved, offline: true };
+    } catch (err) {
+      console.error('Error eliminando recurrente offline:', err);
+      throw err;
+    }
+  }
+
+  async syncPendingRecurrings(userId) {
+    if (this.isSyncing) {
+      console.log('⏳ Sincronización ya en progreso... (recurrings)');
+      return { success: false, message: 'Sync in progress' };
+    }
+
+    if (!navigator.onLine) {
+      console.log('📡 Sin conexión, no se puede sincronizar recurrentes');
+      return { success: false, message: 'No internet connection' };
+    }
+
+    this.isSyncing = true;
+    this.notifyListeners({ type: 'SYNC_STARTED_RECURRINGS' });
+
+    try {
+      const pending = await db.getPendingRecurrings(userId);
+      if (!pending || pending.length === 0) {
+        this.isSyncing = false;
+        this.notifyListeners({ type: 'SYNC_COMPLETED_RECURRINGS', synced: 0 });
+        return { success: true, synced: 0 };
+      }
+
+      console.log(`🔄 Sincronizando ${pending.length} recurrentes...`);
+      let synced = 0;
+      let errors = 0;
+
+      for (const p of pending) {
+        try {
+          await db.updatePendingRecurringStatus(p.localId, 'syncing');
+          let resp;
+          switch (p.action) {
+            case 'CREATE':
+              resp = await api.post('/recurring-transactions', {
+                title: p.title,
+                type: p.type,
+                amount: p.amount,
+                description: p.description,
+                categoryId: p.categoryId,
+                frequencyValue: p.frequencyValue,
+                frequencyUnit: p.frequencyUnit,
+                startDate: p.startDate,
+                endDate: p.endDate,
+                notifyOnRun: p.notifyOnRun
+              }, {
+                headers: {
+                  'X-Client-Request-Id': p.localId
+                }
+              });
+              // Optionally store returned recurring locally
+              break;
+
+            case 'UPDATE':
+              resp = await api.put(`/recurring-transactions/${p.transactionId}`, p, {
+                headers: { 'X-Client-Request-Id': p.localId }
+              });
+              break;
+
+            case 'DELETE':
+              resp = await api.delete(`/recurring-transactions/${p.transactionId}`, {
+                headers: { 'X-Client-Request-Id': p.localId }
+              });
+              break;
+
+            default:
+              throw new Error(`Acción desconocida: ${p.action}`);
+          }
+
+          await db.updatePendingRecurringStatus(p.localId, 'synced', resp?.data?.data?.id);
+          synced++;
+        } catch (err) {
+          console.error('❌ Error sincronizando recurrente', p.localId, err);
+          await db.updatePendingRecurringStatus(p.localId, 'error', null, err.message);
+          errors++;
+        }
+      }
+
+      await db.cleanSyncedRecurrings();
+
+      this.notifyListeners({ type: 'SYNC_COMPLETED_RECURRINGS', synced, errors });
+      return { success: true, synced, errors };
+    } catch (err) {
+      console.error('❌ Error en syncPendingRecurrings:', err);
+      this.notifyListeners({ type: 'SYNC_ERROR_RECURRINGS', error: err });
+      return { success: false, error: err.message };
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  // ============================
   // Background Sync Registration
   // ============================
 

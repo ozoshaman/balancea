@@ -99,3 +99,19 @@ export const processRecurring = async (req, res) => {
     return errorResponse(res, 'Error al procesar transacciones recurrentes', 500);
   }
 };
+
+/**
+ * Ejecutar ahora una recurrencia específica (run-now)
+ */
+export const runNowRecurring = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const tx = await recurringService.runNow(userId, id);
+    return successResponse(res, tx, 'Transacción recurrente ejecutada ahora');
+  } catch (error) {
+    console.error('Error en runNowRecurring:', error);
+    const status = error.status || 500;
+    return errorResponse(res, error.message || 'Error ejecutando la recurrencia', status);
+  }
+};

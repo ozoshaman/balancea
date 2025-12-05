@@ -1,14 +1,15 @@
 // src/config/routes.js
+import React, { lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import Login from '../pages/Auth/Login';
-import Register from '../pages/Auth/Register';
-import VerifyEmail from '../pages/Auth/VerifyEmail';
-import ForgotPassword from '../pages/Auth/ForgotPassword';
-import VerifyResetCode from '../pages/Auth/VerifyResetCode';
-import ResetPassword from '../pages/Auth/ResetPassword';
-import Dashboard from '../pages/Dashboard/Dashboard';
-import TransactionsPage from '../pages/Transactions/TransactionsPage';
-import ProtectedRoute from '../components/common/ProtectedRoute';
+const Login = lazy(() => import('../pages/Auth/Login'));
+const Register = lazy(() => import('../pages/Auth/Register'));
+const VerifyEmail = lazy(() => import('../pages/Auth/VerifyEmail'));
+const ForgotPassword = lazy(() => import('../pages/Auth/ForgotPassword'));
+const VerifyResetCode = lazy(() => import('../pages/Auth/VerifyResetCode'));
+const ResetPassword = lazy(() => import('../pages/Auth/ResetPassword'));
+const Dashboard = lazy(() => import('../pages/Dashboard/Dashboard'));
+const TransactionsPage = lazy(() => import('../pages/Transactions/TransactionsPage'));
+const ProtectedRoute = lazy(() => import('../components/common/ProtectedRoute'));
 
 export const router = createBrowserRouter([
   {

@@ -4,12 +4,14 @@ import { useSelector } from 'react-redux';
 import db from '../services/db';
 import syncService from '../services/syncService';
 import api from '../config/axiosConfig';
+import sseService from '../services/sseService';
 
 /**
  * Hook personalizado para gestionar transacciones con soporte offline
  */
 const useTransactions = () => {
   const { user } = useSelector((state) => state.auth);
+  const { token } = useSelector((state) => state.auth);
   const [transactions, setTransactions] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -264,6 +266,32 @@ const useTransactions = () => {
       updatePendingCount();
     }
   }, [user, loadTransactions, updatePendingCount]);
+
+  // ============================
+  // Suscribirse a eventos SSE del servidor para actualizaciones en tiempo real
+  // ============================
+  useEffect(() => {
+    if (!user?.id || !token) return;
+
+    // Usar sseService para compartir una sola conexión por token
+    const unsubscribe = sseService.subscribeToTransactions(token, {
+      onCreated: (ev) => {
+        try {
+          console.log('SSE transaction_created', ev.data);
+          loadTransactions();
+          updatePendingCount();
+        } catch (e) {
+          console.warn('Error manejando evento transaction_created', e);
+        }
+      },
+      onOpen: () => console.log('[SSE] conectado'),
+      onError: (err) => console.warn('[SSE] error', err)
+    });
+
+    return () => {
+      try { unsubscribe(); } catch (e) { /* swallow */ }
+    };
+  }, [user?.id, token, loadTransactions, updatePendingCount]);
 
   // ============================
   // Crear transacción
